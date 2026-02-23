@@ -1,6 +1,7 @@
 export type RecipeListItem = {
   id: number;
   title: string;
+  category: string;
   description: string;
   servings: number;
   prepTimeMin: number;
@@ -12,14 +13,16 @@ export type RecipeListItem = {
 };
 
 export type Ingredient = {
+  section: string;
   name: string;
-  amount: number;
+  amount: string;
   unit: string;
 };
 
 export type RecipeDetail = {
   id: number;
   title: string;
+  category: string;
   description: string;
   servings: number;
   prepTimeMin: number;
@@ -34,6 +37,7 @@ export type RecipeDetail = {
 
 export type RecipePayload = {
   title: string;
+  category: string;
   description: string;
   servings: number;
   prepTimeMin: number;

@@ -18,12 +18,13 @@ type ViewState =
 
 const EMPTY_RECIPE: RecipePayload = {
   title: "",
+  category: "",
   description: "",
   servings: 1,
   prepTimeMin: 0,
   cookTimeMin: 0,
   photoUrl: null,
-  ingredients: [{ name: "", amount: 100, unit: "г" }],
+  ingredients: [{ section: "Основное", name: "", amount: "100", unit: "г" }],
   steps: [""],
   tags: []
 };
@@ -34,17 +35,27 @@ export default function App() {
   const [selectedRecipe, setSelectedRecipe] = useState<RecipeDetail | null>(null);
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState("");
+  const [activeCategory, setActiveCategory] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const suggestedCategories = ["Десерты", "Рыба", "Говядина", "Курица", "Супы", "Салаты", "Завтраки"];
 
   const tags = useMemo(
     () => Array.from(new Set(recipes.flatMap((recipe) => recipe.tags))).sort((a, b) => a.localeCompare(b)),
     [recipes]
   );
+  const categories = useMemo(
+    () =>
+      Array.from(new Set([...suggestedCategories, ...recipes.map((recipe) => recipe.category)]))
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b)),
+    [recipes]
+  );
 
   useEffect(() => {
     void loadRecipes();
-  }, [search, activeTag]);
+  }, [search, activeTag, activeCategory]);
 
   useEffect(() => {
     if (view.mode !== "detail") {
@@ -58,7 +69,7 @@ export default function App() {
     try {
       setLoading(true);
       setError(null);
-      const data = await fetchRecipes({ q: search, tag: activeTag });
+      const data = await fetchRecipes({ q: search, tag: activeTag, category: activeCategory });
       setRecipes(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось загрузить рецепты");
@@ -100,7 +111,14 @@ export default function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>Мои рецепты</h1>
+        <button
+          type="button"
+          className="header-title-button"
+          onClick={() => setView({ mode: "list" })}
+          aria-label="Перейти на главную страницу"
+        >
+          <h1>Мои рецепты</h1>
+        </button>
         <button type="button" onClick={() => setView({ mode: "create" })}>
           + Новый рецепт
         </button>
@@ -125,11 +143,20 @@ export default function App() {
                 </option>
               ))}
             </select>
+            <select value={activeCategory} onChange={(event) => setActiveCategory(event.target.value)}>
+              <option value="">Все категории</option>
+              {categories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="card-grid">
             {recipes.map((recipe) => (
               <article key={recipe.id} className="card">
                 <h3>{recipe.title}</h3>
+                <p>Категория: {recipe.category}</p>
                 <p>{recipe.description || "Без описания"}</p>
                 <div className="chips">
                   {recipe.tags.map((tag) => (
@@ -161,6 +188,7 @@ export default function App() {
             ← К списку
           </button>
           <h2>{selectedRecipe.title}</h2>
+          <p>Категория: {selectedRecipe.category}</p>
           {getImageUrl(selectedRecipe.photoUrl) && (
             <img src={getImageUrl(selectedRecipe.photoUrl) ?? ""} alt={selectedRecipe.title} className="photo" />
           )}
@@ -170,13 +198,27 @@ export default function App() {
             {selectedRecipe.cookTimeMin} мин
           </p>
           <h3>Ингредиенты</h3>
-          <ul>
-            {selectedRecipe.ingredients.map((item, index) => (
-              <li key={`${item.name}-${index}`}>
-                {item.name}: {item.amount} {item.unit}
-              </li>
-            ))}
-          </ul>
+          {Object.entries(
+            selectedRecipe.ingredients.reduce<Record<string, typeof selectedRecipe.ingredients>>((acc, ingredient) => {
+              const section = ingredient.section || "Основное";
+              if (!acc[section]) {
+                acc[section] = [];
+              }
+              acc[section].push(ingredient);
+              return acc;
+            }, {})
+          ).map(([section, items]) => (
+            <div key={section}>
+              <h4>{section}</h4>
+              <ul>
+                {items.map((item, index) => (
+                  <li key={`${section}-${item.name}-${index}`}>
+                    {item.name}: {item.amount} {item.unit}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
           <h3>Шаги</h3>
           <ol>
             {selectedRecipe.steps.map((step, index) => (
@@ -211,31 +253,59 @@ function RecipeForm(props: { recipeId: number | null; onCancel: () => void; onSa
   const { recipeId, onCancel, onSaved } = props;
   const [form, setForm] = useState<RecipePayload>(EMPTY_RECIPE);
   const [tagsInput, setTagsInput] = useState("");
+  const [newSectionName, setNewSectionName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const sectionSuggestions = ["Основное", "Соус", "Гарнир", "Украшение"];
 
   useEffect(() => {
     if (!recipeId) {
       setForm(EMPTY_RECIPE);
       setTagsInput("");
+      setNewSectionName("");
       return;
     }
     void (async () => {
       const recipe = await fetchRecipe(recipeId);
       setForm({
         title: recipe.title,
+        category: recipe.category,
         description: recipe.description ?? "",
         servings: recipe.servings,
         prepTimeMin: recipe.prepTimeMin,
         cookTimeMin: recipe.cookTimeMin,
         photoUrl: recipe.photoUrl,
-        ingredients: recipe.ingredients.length ? recipe.ingredients : [{ name: "", amount: 100, unit: "г" }],
+        ingredients: recipe.ingredients.length
+          ? recipe.ingredients.map((item) => ({
+              ...item,
+              section: item.section || "Основное"
+            }))
+          : [{ section: "Основное", name: "", amount: "100", unit: "г" }],
         steps: recipe.steps.length ? recipe.steps : [""],
         tags: recipe.tags
       });
       setTagsInput(recipe.tags.join(", "));
+      setNewSectionName("");
     })();
   }, [recipeId]);
+
+  const ingredientSections = useMemo(
+    () =>
+      Object.entries(
+        form.ingredients.reduce<Record<string, Array<{ item: RecipePayload["ingredients"][number]; index: number }>>>(
+          (acc, item, index) => {
+            const section = (item.section || "Основное").trim() || "Основное";
+            if (!acc[section]) {
+              acc[section] = [];
+            }
+            acc[section].push({ item, index });
+            return acc;
+          },
+          {}
+        )
+      ),
+    [form.ingredients]
+  );
 
   function updateIngredient(index: number, field: "name" | "amount" | "unit", value: string) {
     setForm((prev) => ({
@@ -244,11 +314,62 @@ function RecipeForm(props: { recipeId: number | null; onCancel: () => void; onSa
         i === index
           ? {
               ...item,
-              [field]: field === "amount" ? Number(value) : value
+              [field]: value
             }
           : item
       )
     }));
+  }
+
+  function renameSection(oldSection: string, newValue: string) {
+    const newSection = newValue.trim();
+    if (!newSection) {
+      return;
+    }
+    setForm((prev) => ({
+      ...prev,
+      ingredients: prev.ingredients.map((item) =>
+        ((item.section || "Основное").trim() || "Основное") === oldSection ? { ...item, section: newSection } : item
+      )
+    }));
+  }
+
+  function addIngredientToSection(section: string) {
+    setForm((prev) => ({
+      ...prev,
+      ingredients: [...prev.ingredients, { section, name: "", amount: "100", unit: "г" }]
+    }));
+  }
+
+  function removeIngredient(index: number) {
+    setForm((prev) => {
+      const nextIngredients = prev.ingredients.filter((_, i) => i !== index);
+      return {
+        ...prev,
+        ingredients: nextIngredients.length ? nextIngredients : [{ section: "Основное", name: "", amount: "100", unit: "г" }]
+      };
+    });
+  }
+
+  function addSection() {
+    const section = newSectionName.trim();
+    if (!section) {
+      return;
+    }
+    addIngredientToSection(section);
+    setNewSectionName("");
+  }
+
+  function removeSection(section: string) {
+    setForm((prev) => {
+      const nextIngredients = prev.ingredients.filter(
+        (item) => ((item.section || "Основное").trim() || "Основное") !== section
+      );
+      return {
+        ...prev,
+        ingredients: nextIngredients.length ? nextIngredients : [{ section: "Основное", name: "", amount: "100", unit: "г" }]
+      };
+    });
   }
 
   function updateStep(index: number, value: string) {
@@ -281,9 +402,12 @@ function RecipeForm(props: { recipeId: number | null; onCancel: () => void; onSa
       ...form,
       title: form.title.trim(),
       description: form.description.trim(),
+      category: form.category.trim(),
       ingredients: form.ingredients.map((item) => ({
         ...item,
+        section: item.section.trim(),
         name: item.name.trim(),
+        amount: item.amount.trim(),
         unit: item.unit.trim()
       })),
       steps: form.steps.map((step) => step.trim()).filter(Boolean),
@@ -316,6 +440,21 @@ function RecipeForm(props: { recipeId: number | null; onCancel: () => void; onSa
       <label>
         Название
         <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required />
+      </label>
+
+      <label>
+        Категория
+        <input
+          value={form.category}
+          onChange={(event) => setForm({ ...form, category: event.target.value })}
+          list="category-suggestions"
+          required
+        />
+        <datalist id="category-suggestions">
+          {["Десерты", "Рыба", "Говядина", "Курица", "Супы", "Салаты", "Завтраки"].map((category) => (
+            <option key={category} value={category} />
+          ))}
+        </datalist>
       </label>
 
       <label>
@@ -364,53 +503,69 @@ function RecipeForm(props: { recipeId: number | null; onCancel: () => void; onSa
       {getImageUrl(form.photoUrl) && <img src={getImageUrl(form.photoUrl) ?? ""} alt="Рецепт" className="photo" />}
 
       <h3>Ингредиенты</h3>
-      {form.ingredients.map((item, index) => (
-        <div key={`ingredient-${index}`} className="row">
-          <input
-            placeholder="Название"
-            value={item.name}
-            onChange={(event) => updateIngredient(index, "name", event.target.value)}
-            required
-          />
-          <input
-            type="number"
-            min={1}
-            step="0.1"
-            placeholder="Кол-во"
-            value={item.amount}
-            onChange={(event) => updateIngredient(index, "amount", event.target.value)}
-            required
-          />
-          <select value={item.unit} onChange={(event) => updateIngredient(index, "unit", event.target.value)}>
-            <option value="г">г</option>
-            <option value="мл">мл</option>
-            <option value="шт">шт</option>
-          </select>
-          <button
-            type="button"
-            onClick={() =>
-              setForm((prev) => ({
-                ...prev,
-                ingredients: prev.ingredients.filter((_, i) => i !== index)
-              }))
-            }
-            disabled={form.ingredients.length === 1}
-          >
-            Удалить
-          </button>
+      {ingredientSections.map(([section, sectionItems]) => (
+        <div key={section} className="detail">
+          <div className="row">
+            <strong>Блок:</strong>
+            <input
+              value={section}
+              list="ingredient-section-suggestions"
+              onChange={(event) => renameSection(section, event.target.value)}
+              aria-label="Название блока ингредиентов"
+            />
+            <button type="button" onClick={() => addIngredientToSection(section)}>
+              + Ингредиент в блок
+            </button>
+            <button type="button" onClick={() => removeSection(section)} disabled={ingredientSections.length === 1}>
+              Удалить блок
+            </button>
+          </div>
+
+          {sectionItems.map(({ item, index }) => (
+            <div key={`ingredient-${index}`} className="row">
+              <input
+                placeholder="Название"
+                value={item.name}
+                onChange={(event) => updateIngredient(index, "name", event.target.value)}
+                required
+              />
+              <input
+                type="text"
+                placeholder="Кол-во (например: 100-150)"
+                value={item.amount}
+                onChange={(event) => updateIngredient(index, "amount", event.target.value)}
+                required
+              />
+              <select value={item.unit} onChange={(event) => updateIngredient(index, "unit", event.target.value)}>
+                <option value="г">г</option>
+                <option value="мл">мл</option>
+                <option value="шт">шт</option>
+                <option value="столовая ложка">столовая ложка</option>
+                <option value="чайная ложка">чайная ложка</option>
+              </select>
+              <button type="button" onClick={() => removeIngredient(index)}>
+                Удалить
+              </button>
+            </div>
+          ))}
         </div>
       ))}
-      <button
-        type="button"
-        onClick={() =>
-          setForm((prev) => ({
-            ...prev,
-            ingredients: [...prev.ingredients, { name: "", amount: 100, unit: "г" }]
-          }))
-        }
-      >
-        + Добавить ингредиент
-      </button>
+      <div className="row">
+        <input
+          placeholder="Новый блок (например: Соус)"
+          value={newSectionName}
+          list="ingredient-section-suggestions"
+          onChange={(event) => setNewSectionName(event.target.value)}
+        />
+        <button type="button" onClick={addSection}>
+          + Добавить блок
+        </button>
+      </div>
+      <datalist id="ingredient-section-suggestions">
+        {sectionSuggestions.map((section) => (
+          <option key={section} value={section} />
+        ))}
+      </datalist>
 
       <h3>Шаги</h3>
       {form.steps.map((step, index) => (

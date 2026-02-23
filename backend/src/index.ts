@@ -10,13 +10,15 @@ import { pool, withTransaction } from "./db.js";
 dotenv.config();
 
 type IngredientInput = {
+  section: string;
   name: string;
-  amount: number;
+  amount: string;
   unit: string;
 };
 
 type RecipeInput = {
   title: string;
+  category: string;
   description?: string;
   servings?: number;
   prepTimeMin?: number;
@@ -67,12 +69,14 @@ app.get("/health", (_req, res) => {
 app.get("/recipes", async (req, res) => {
   const query = typeof req.query.q === "string" ? req.query.q.trim() : null;
   const tag = typeof req.query.tag === "string" ? req.query.tag.trim() : null;
+  const category = typeof req.query.category === "string" ? req.query.category.trim() : null;
 
   const { rows } = await pool.query(
     `
     SELECT
       r.id,
       r.title,
+      r.category,
       r.description,
       r.servings,
       r.prep_time_min AS "prepTimeMin",
@@ -92,10 +96,11 @@ app.get("/recipes", async (req, res) => {
         JOIN tags t2 ON t2.id = rt2.tag_id
         WHERE rt2.recipe_id = r.id AND t2.name = $2
       ))
+      AND ($3::text IS NULL OR r.category = $3)
     GROUP BY r.id
     ORDER BY r.updated_at DESC
     `,
-    [query, tag]
+    [query, tag, category]
   );
 
   res.json(rows);
@@ -112,6 +117,7 @@ app.get("/recipes/:id", async (req, res) => {
     SELECT
       r.id,
       r.title,
+      r.category,
       r.description,
       r.servings,
       r.prep_time_min AS "prepTimeMin",
@@ -131,7 +137,7 @@ app.get("/recipes/:id", async (req, res) => {
 
   const ingredientsResult = await pool.query(
     `
-    SELECT name, amount::float AS amount, unit, position
+    SELECT section, name, amount, unit, position
     FROM recipe_ingredients
     WHERE recipe_id = $1
     ORDER BY position ASC
@@ -162,7 +168,8 @@ app.get("/recipes/:id", async (req, res) => {
 
   return res.json({
     ...recipeResult.rows[0],
-    ingredients: ingredientsResult.rows.map((row: { name: string; amount: number; unit: string }) => ({
+    ingredients: ingredientsResult.rows.map((row: { section: string; name: string; amount: string; unit: string }) => ({
+      section: row.section,
       name: row.name,
       amount: row.amount,
       unit: row.unit
@@ -182,12 +189,13 @@ app.post("/recipes", async (req, res) => {
   const recipe = await withTransaction(async (client) => {
     const insertRecipeResult = await client.query(
       `
-      INSERT INTO recipes (title, description, servings, prep_time_min, cook_time_min, photo_url)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO recipes (title, category, description, servings, prep_time_min, cook_time_min, photo_url)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING id
       `,
       [
         data.title,
+        data.category,
         data.description ?? "",
         data.servings ?? 1,
         data.prepTimeMin ?? 0,
@@ -228,16 +236,18 @@ app.put("/recipes/:id", async (req, res) => {
       `
       UPDATE recipes
       SET title = $1,
-          description = $2,
-          servings = $3,
-          prep_time_min = $4,
-          cook_time_min = $5,
-          photo_url = $6,
+          category = $2,
+          description = $3,
+          servings = $4,
+          prep_time_min = $5,
+          cook_time_min = $6,
+          photo_url = $7,
           updated_at = NOW()
-      WHERE id = $7
+      WHERE id = $8
       `,
       [
         data.title,
+        data.category,
         data.description ?? "",
         data.servings ?? 1,
         data.prepTimeMin ?? 0,
@@ -299,6 +309,10 @@ function validateRecipePayload(payload: unknown): { valid: true; data: RecipeInp
   if (!title) {
     return { valid: false, error: "Title is required" };
   }
+  const category = typeof obj.category === "string" ? obj.category.trim() : "";
+  if (!category) {
+    return { valid: false, error: "Category is required" };
+  }
 
   if (!Array.isArray(obj.ingredients) || obj.ingredients.length === 0) {
     return { valid: false, error: "At least one ingredient is required" };
@@ -313,13 +327,14 @@ function validateRecipePayload(payload: unknown): { valid: true; data: RecipeInp
       return { valid: false, error: "Ingredient must be an object" };
     }
     const ingredient = item as Record<string, unknown>;
+    const section = typeof ingredient.section === "string" ? ingredient.section.trim() : "";
     const name = typeof ingredient.name === "string" ? ingredient.name.trim() : "";
-    const amount = Number(ingredient.amount);
+    const amount = typeof ingredient.amount === "string" ? ingredient.amount.trim() : "";
     const unit = typeof ingredient.unit === "string" ? ingredient.unit.trim() : "";
-    if (!name || !Number.isFinite(amount) || amount <= 0 || !unit) {
+    if (!section || !name || !amount || !unit) {
       return { valid: false, error: "Ingredient fields are invalid" };
     }
-    ingredients.push({ name, amount, unit });
+    ingredients.push({ section, name, amount, unit });
   }
 
   const steps: string[] = [];
@@ -344,6 +359,7 @@ function validateRecipePayload(payload: unknown): { valid: true; data: RecipeInp
     valid: true,
     data: {
       title,
+      category,
       description: typeof obj.description === "string" ? obj.description.trim() : "",
       servings: Number(obj.servings) > 0 ? Number(obj.servings) : 1,
       prepTimeMin: Number(obj.prepTimeMin) >= 0 ? Number(obj.prepTimeMin) : 0,
@@ -361,10 +377,10 @@ async function insertIngredients(client: import("pg").PoolClient, recipeId: numb
     const item = items[index];
     await client.query(
       `
-      INSERT INTO recipe_ingredients (recipe_id, name, amount, unit, position)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO recipe_ingredients (recipe_id, section, name, amount, unit, position)
+      VALUES ($1, $2, $3, $4, $5, $6)
       `,
-      [recipeId, item.name, item.amount, item.unit, index]
+      [recipeId, item.section, item.name, item.amount, item.unit, index]
     );
   }
 }

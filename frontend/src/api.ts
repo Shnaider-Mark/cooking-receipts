@@ -21,13 +21,16 @@ export function getImageUrl(url: string | null): string | null {
   return `${API_BASE}${url}`;
 }
 
-export async function fetchRecipes(params: { q?: string; tag?: string }) {
+export async function fetchRecipes(params: { q?: string; tag?: string; category?: string }) {
   const query = new URLSearchParams();
   if (params.q) {
     query.set("q", params.q);
   }
   if (params.tag) {
     query.set("tag", params.tag);
+  }
+  if (params.category) {
+    query.set("category", params.category);
   }
   return request<RecipeListItem[]>(`/recipes?${query.toString()}`);
 }
