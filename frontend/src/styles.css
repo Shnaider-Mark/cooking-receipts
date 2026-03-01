@@ -72,6 +72,25 @@ body {
   gap: 12px;
 }
 
+.tabs-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.tab-button {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  font-weight: 600;
+}
+
+.tab-button-active {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
 .list-view > *,
 .detail-view > *,
 .recipe-form > * {
@@ -501,6 +520,105 @@ label {
   gap: 14px;
 }
 
+.planner-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.planner-topbar {
+  padding: 14px;
+}
+
+.planner-week-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.planner-week-label {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.planner-form {
+  padding: 14px;
+}
+
+.planner-form h3 {
+  margin: 0 0 10px;
+}
+
+.planner-form-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.planner-form-actions {
+  display: flex;
+  align-items: flex-end;
+}
+
+.planner-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.planner-day {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 220px;
+}
+
+.planner-day-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  color: #334155;
+}
+
+.planner-day-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.planner-empty {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 14px;
+}
+
+.planner-item {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  border: 1px solid var(--line);
+  background: var(--surface-muted);
+  border-radius: 10px;
+  padding: 8px;
+}
+
+.planner-item-title {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.planner-item-meta {
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.planner-item-remove {
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
 .form-header {
   display: flex;
   justify-content: space-between;
@@ -619,6 +737,10 @@ label {
     grid-template-columns: 1fr;
   }
 
+  .tabs-row {
+    flex-wrap: wrap;
+  }
+
   .detail-topbar,
   .form-header {
     flex-direction: column;
@@ -645,5 +767,13 @@ label {
 
   .form-actions .btn {
     flex: 1 1 auto;
+  }
+
+  .planner-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .planner-item {
+    flex-direction: column;
   }
 }

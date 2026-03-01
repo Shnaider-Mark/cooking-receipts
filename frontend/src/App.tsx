@@ -1,20 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  createMealPlan,
   createRecipe,
+  deleteMealPlan,
   deleteRecipe,
+  fetchMealPlans,
   fetchRecipe,
   fetchRecipes,
   getImageUrl,
   updateRecipe,
   uploadPhoto
 } from "./api";
-import type { RecipeDetail, RecipeListItem, RecipePayload } from "./types";
+import type { MealPlanItem, RecipeDetail, RecipeListItem, RecipePayload } from "./types";
 
 type ViewState =
   | { mode: "list" }
   | { mode: "detail"; id: number }
   | { mode: "create" }
   | { mode: "edit"; id: number };
+
+type AppTab = "recipes" | "planner";
 
 const EMPTY_RECIPE: RecipePayload = {
   title: "",
@@ -30,6 +35,7 @@ const EMPTY_RECIPE: RecipePayload = {
 };
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState<AppTab>("recipes");
   const [view, setView] = useState<ViewState>({ mode: "list" });
   const [recipes, setRecipes] = useState<RecipeListItem[]>([]);
   const [selectedRecipe, setSelectedRecipe] = useState<RecipeDetail | null>(null);
@@ -139,107 +145,127 @@ export default function App() {
           </button>
           <p className="header-subtitle">Домашняя коллекция рецептов</p>
         </div>
-        <button type="button" className="btn btn-primary" onClick={() => setView({ mode: "create" })}>
-          + Новый рецепт
-        </button>
+        {activeTab === "recipes" && (
+          <button type="button" className="btn btn-primary" onClick={() => setView({ mode: "create" })}>
+            + Новый рецепт
+          </button>
+        )}
       </header>
+      <div className="tabs-row">
+        <button
+          type="button"
+          className={`tab-button ${activeTab === "recipes" ? "tab-button-active" : ""}`}
+          onClick={() => setActiveTab("recipes")}
+        >
+          Рецепты
+        </button>
+        <button
+          type="button"
+          className={`tab-button ${activeTab === "planner" ? "tab-button-active" : ""}`}
+          onClick={() => setActiveTab("planner")}
+        >
+          План недели
+        </button>
+      </div>
 
       {error && <div className="alert error">{error}</div>}
       {loading && view.mode !== "list" && <div className="alert">Загрузка...</div>}
 
-      {view.mode === "list" && (
-        <section className="list-view">
-          <div className="toolbar">
-            <div className="filters">
-              <input
-                placeholder="Поиск по названию"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
-              <select value={activeTag} onChange={(event) => setActiveTag(event.target.value)}>
-                <option value="">Все теги</option>
-                {tags.map((tag) => (
-                  <option key={tag} value={tag}>
-                    {tag}
-                  </option>
-                ))}
-              </select>
-              <select value={activeCategory} onChange={(event) => setActiveCategory(event.target.value)}>
-                <option value="">Все категории</option>
-                {categories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {hasActiveFilters && (
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => {
-                  setSearch("");
-                  setActiveTag("");
-                  setActiveCategory("");
-                }}
-              >
-                Сбросить фильтры
-              </button>
-            )}
-          </div>
-          <p className="list-meta">{loading ? "Обновляем список..." : `Найдено рецептов: ${recipes.length}`}</p>
-          <div className="card-grid">
-            {loading &&
-              listSkeletonItems.map((item) => (
-                <article key={item} className="card recipe-card skeleton-card" aria-hidden="true">
-                  <div className="skeleton skeleton-title" />
-                  <div className="skeleton skeleton-badge" />
-                  <div className="skeleton skeleton-line" />
-                  <div className="skeleton skeleton-line short" />
-                  <div className="skeleton skeleton-actions" />
-                </article>
-              ))}
-            {recipes.length === 0 && !loading && (
-              <article className="card empty-state">
-                <h3>Рецепты не найдены</h3>
-                <p>Попробуйте изменить фильтры или добавьте новый рецепт.</p>
-              </article>
-            )}
-            {recipes.map((recipe) => (
-              <article key={recipe.id} className="card recipe-card">
-                <div className="recipe-card-head">
-                  <h3 title={recipe.title}>{recipe.title}</h3>
-                  <span className="category-badge">{recipe.category}</span>
-                </div>
-                <p className="recipe-description">{recipe.description || "Без описания"}</p>
-                {recipe.tags.length > 0 && (
-                  <div className="chips">
-                    {recipe.tags.map((tag) => (
-                      <span key={tag} className="chip">
+      {activeTab === "recipes" && (
+        <>
+          {view.mode === "list" && (
+            <section className="list-view">
+              <div className="toolbar">
+                <div className="filters">
+                  <input
+                    placeholder="Поиск по названию"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                  />
+                  <select value={activeTag} onChange={(event) => setActiveTag(event.target.value)}>
+                    <option value="">Все теги</option>
+                    {tags.map((tag) => (
+                      <option key={tag} value={tag}>
                         {tag}
-                      </span>
+                      </option>
                     ))}
-                  </div>
-                )}
-                <div className="actions recipe-actions">
-                  <button type="button" className="btn btn-primary" onClick={() => setView({ mode: "detail", id: recipe.id })}>
-                    Открыть
-                  </button>
-                  <button type="button" className="btn btn-secondary" onClick={() => setView({ mode: "edit", id: recipe.id })}>
-                    Редактировать
-                  </button>
-                  <button type="button" className="btn btn-danger" onClick={() => void onDeleteRecipe(recipe.id)}>
-                    Удалить
-                  </button>
+                  </select>
+                  <select value={activeCategory} onChange={(event) => setActiveCategory(event.target.value)}>
+                    <option value="">Все категории</option>
+                    {categories.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      setSearch("");
+                      setActiveTag("");
+                      setActiveCategory("");
+                    }}
+                  >
+                    Сбросить фильтры
+                  </button>
+                )}
+              </div>
+              <p className="list-meta">{loading ? "Обновляем список..." : `Найдено рецептов: ${recipes.length}`}</p>
+              <div className="card-grid">
+                {loading &&
+                  listSkeletonItems.map((item) => (
+                    <article key={item} className="card recipe-card skeleton-card" aria-hidden="true">
+                      <div className="skeleton skeleton-title" />
+                      <div className="skeleton skeleton-badge" />
+                      <div className="skeleton skeleton-line" />
+                      <div className="skeleton skeleton-line short" />
+                      <div className="skeleton skeleton-actions" />
+                    </article>
+                  ))}
+                {recipes.length === 0 && !loading && (
+                  <article className="card empty-state">
+                    <h3>Рецепты не найдены</h3>
+                    <p>Попробуйте изменить фильтры или добавьте новый рецепт.</p>
+                  </article>
+                )}
+                {recipes.map((recipe) => (
+                  <article key={recipe.id} className="card recipe-card">
+                    <div className="recipe-card-head">
+                      <h3 title={recipe.title}>{recipe.title}</h3>
+                      <span className="category-badge">{recipe.category}</span>
+                    </div>
+                    <p className="recipe-description">{recipe.description || "Без описания"}</p>
+                    {recipe.tags.length > 0 && (
+                      <div className="chips">
+                        {recipe.tags.map((tag) => (
+                          <span key={tag} className="chip">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="actions recipe-actions">
+                      <button type="button" className="btn btn-primary" onClick={() => setView({ mode: "detail", id: recipe.id })}>
+                        Открыть
+                      </button>
+                      <button type="button" className="btn btn-secondary" onClick={() => setView({ mode: "edit", id: recipe.id })}>
+                        Редактировать
+                      </button>
+                      <button type="button" className="btn btn-danger" onClick={() => void onDeleteRecipe(recipe.id)}>
+                        Удалить
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
 
-      {view.mode === "detail" && selectedRecipe && (
-        <section className="detail detail-view">
+          {view.mode === "detail" && selectedRecipe && (
+            <section className="detail detail-view">
           <div className="detail-topbar">
             <button type="button" className="btn btn-ghost" onClick={() => setView({ mode: "list" })}>
               ← К списку
@@ -330,19 +356,22 @@ export default function App() {
               </div>
             </>
           )}
-        </section>
-      )}
+            </section>
+          )}
 
-      {(view.mode === "create" || view.mode === "edit") && (
-        <RecipeForm
-          recipeId={view.mode === "edit" ? view.id : null}
-          onCancel={() => setView({ mode: "list" })}
-          onSaved={async (id) => {
-            await loadRecipes();
-            setView({ mode: "detail", id });
-          }}
-        />
+          {(view.mode === "create" || view.mode === "edit") && (
+            <RecipeForm
+              recipeId={view.mode === "edit" ? view.id : null}
+              onCancel={() => setView({ mode: "list" })}
+              onSaved={async (id) => {
+                await loadRecipes();
+                setView({ mode: "detail", id });
+              }}
+            />
+          )}
+        </>
       )}
+      {activeTab === "planner" && <MealPlanner />}
     </div>
   );
 }
@@ -752,4 +781,209 @@ function RecipeForm(props: { recipeId: number | null; onCancel: () => void; onSa
       </div>
     </form>
   );
+}
+
+function MealPlanner() {
+  const [weekStart, setWeekStart] = useState(() => toIsoDate(getStartOfWeek(new Date())));
+  const [plans, setPlans] = useState<MealPlanItem[]>([]);
+  const [recipes, setRecipes] = useState<RecipeListItem[]>([]);
+  const [recipeId, setRecipeId] = useState<number | "">("");
+  const [startDate, setStartDate] = useState(weekStart);
+  const [endDate, setEndDate] = useState(weekStart);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const weekDays = useMemo(() => {
+    const start = parseIsoDateLocal(weekStart);
+    return Array.from({ length: 7 }, (_, index) => {
+      const day = new Date(start.getTime());
+      day.setDate(start.getDate() + index);
+      return toIsoDate(day);
+    });
+  }, [weekStart]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const allRecipes = await fetchRecipes({});
+        setRecipes(allRecipes);
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "Не удалось загрузить рецепты для планирования");
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    setStartDate(weekStart);
+    setEndDate(weekStart);
+  }, [weekStart]);
+
+  useEffect(() => {
+    void loadPlans();
+  }, [weekStart]);
+
+  async function loadPlans() {
+    try {
+      setLoading(true);
+      setMessage(null);
+      const data = await fetchMealPlans(weekStart);
+      setPlans(data);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Не удалось загрузить план недели");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onCreatePlan(event: React.FormEvent) {
+    event.preventDefault();
+    if (recipeId === "") {
+      setMessage("Выберите рецепт");
+      return;
+    }
+    if (endDate < startDate) {
+      setMessage("Дата окончания не может быть раньше даты начала");
+      return;
+    }
+    try {
+      setLoading(true);
+      setMessage(null);
+      await createMealPlan({ recipeId, startDate, endDate });
+      await loadPlans();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Не удалось добавить блюдо в план");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onDeletePlan(id: number) {
+    try {
+      setLoading(true);
+      setMessage(null);
+      await deleteMealPlan(id);
+      await loadPlans();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Не удалось удалить запись плана");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="planner-view">
+      <div className="planner-topbar card">
+        <div className="planner-week-controls">
+          <button type="button" className="btn btn-ghost" onClick={() => setWeekStart(toIsoDate(addDaysLocal(weekStart, -7)))}>
+            ← Неделя назад
+          </button>
+          <div className="planner-week-label">
+            {formatDateRu(weekDays[0])} - {formatDateRu(weekDays[6])}
+          </div>
+          <button type="button" className="btn btn-ghost" onClick={() => setWeekStart(toIsoDate(addDaysLocal(weekStart, 7)))}>
+            Неделя вперед →
+          </button>
+        </div>
+      </div>
+
+      <form className="planner-form card" onSubmit={(event) => void onCreatePlan(event)}>
+        <h3>Добавить в план</h3>
+        <div className="planner-form-grid">
+          <label>
+            Рецепт
+            <select
+              value={recipeId}
+              onChange={(event) => setRecipeId(event.target.value ? Number(event.target.value) : "")}
+              required
+            >
+              <option value="">Выберите рецепт</option>
+              {recipes.map((recipe) => (
+                <option key={recipe.id} value={recipe.id}>
+                  {recipe.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            С даты
+            <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} required />
+          </label>
+          <label>
+            По дату
+            <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} required />
+          </label>
+          <div className="planner-form-actions">
+            <button type="submit" className="btn btn-primary" disabled={loading}>
+              Добавить
+            </button>
+          </div>
+        </div>
+      </form>
+      {message && <div className="alert">{message}</div>}
+
+      <div className="planner-grid">
+        {weekDays.map((day) => {
+          const plansForDay = plans.filter((plan) => plan.startDate <= day && plan.endDate >= day);
+          return (
+            <article key={day} className="planner-day card">
+              <header className="planner-day-header">
+                <strong>{formatWeekdayRu(day)}</strong>
+                <span>{formatDateRu(day)}</span>
+              </header>
+              <div className="planner-day-items">
+                {plansForDay.length === 0 && <p className="planner-empty">Нет запланированных блюд</p>}
+                {plansForDay.map((plan) => (
+                  <div key={plan.id} className="planner-item">
+                    <div>
+                      <div className="planner-item-title">{plan.recipeTitle}</div>
+                      <div className="planner-item-meta">
+                        {plan.recipeCategory} • {formatDateRu(plan.startDate)} - {formatDateRu(plan.endDate)}
+                      </div>
+                    </div>
+                    <button type="button" className="btn btn-danger planner-item-remove" onClick={() => void onDeletePlan(plan.id)}>
+                      Удалить
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function parseIsoDateLocal(value: string): Date {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function toIsoDate(value: Date): string {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addDaysLocal(isoDate: string, amount: number): Date {
+  const value = parseIsoDateLocal(isoDate);
+  value.setDate(value.getDate() + amount);
+  return value;
+}
+
+function getStartOfWeek(value: Date): Date {
+  const copy = new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  const day = copy.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  copy.setDate(copy.getDate() + diff);
+  return copy;
+}
+
+function formatDateRu(isoDate: string): string {
+  return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit" }).format(parseIsoDateLocal(isoDate));
+}
+
+function formatWeekdayRu(isoDate: string): string {
+  return new Intl.DateTimeFormat("ru-RU", { weekday: "short" }).format(parseIsoDateLocal(isoDate));
 }

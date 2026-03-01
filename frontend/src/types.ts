@@ -47,3 +47,19 @@ export type RecipePayload = {
   steps: string[];
   tags: string[];
 };
+
+export type MealPlanItem = {
+  id: number;
+  recipeId: number;
+  recipeTitle: string;
+  recipeCategory: string;
+  startDate: string;
+  endDate: string;
+  createdAt: string;
+};
+
+export type MealPlanPayload = {
+  recipeId: number;
+  startDate: string;
+  endDate: string;
+};

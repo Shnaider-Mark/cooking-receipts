@@ -29,6 +29,12 @@ type RecipeInput = {
   tags: string[];
 };
 
+type MealPlanInput = {
+  recipeId: number;
+  startDate: string;
+  endDate: string;
+};
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -179,6 +185,38 @@ app.get("/recipes/:id", async (req, res) => {
   });
 });
 
+app.get("/meal-plans", async (req, res) => {
+  const weekStartRaw = typeof req.query.weekStart === "string" ? req.query.weekStart : "";
+  const weekStart = parseIsoDate(weekStartRaw);
+  if (!weekStart) {
+    return res.status(400).json({ error: "weekStart must be in YYYY-MM-DD format" });
+  }
+  const weekEnd = addDays(weekStart, 6);
+  const weekStartDate = toIsoDate(weekStart);
+  const weekEndDate = toIsoDate(weekEnd);
+
+  const { rows } = await pool.query(
+    `
+    SELECT
+      mp.id,
+      mp.recipe_id AS "recipeId",
+      mp.start_date::text AS "startDate",
+      mp.end_date::text AS "endDate",
+      mp.created_at AS "createdAt",
+      r.title AS "recipeTitle",
+      r.category AS "recipeCategory"
+    FROM meal_plans mp
+    JOIN recipes r ON r.id = mp.recipe_id
+    WHERE mp.start_date <= $2::date
+      AND mp.end_date >= $1::date
+    ORDER BY mp.start_date ASC, mp.id ASC
+    `,
+    [weekStartDate, weekEndDate]
+  );
+
+  res.json(rows);
+});
+
 app.post("/recipes", async (req, res) => {
   const validation = validateRecipePayload(req.body);
   if (!validation.valid) {
@@ -283,6 +321,44 @@ app.delete("/recipes/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+app.post("/meal-plans", async (req, res) => {
+  const validation = validateMealPlanPayload(req.body);
+  if (!validation.valid) {
+    return res.status(400).json({ error: validation.error });
+  }
+  const data = validation.data;
+
+  const recipeExists = await pool.query("SELECT id FROM recipes WHERE id = $1", [data.recipeId]);
+  if (recipeExists.rowCount === 0) {
+    return res.status(404).json({ error: "Recipe not found" });
+  }
+
+  const insertResult = await pool.query(
+    `
+    INSERT INTO meal_plans (recipe_id, start_date, end_date)
+    VALUES ($1, $2::date, $3::date)
+    RETURNING id
+    `,
+    [data.recipeId, data.startDate, data.endDate]
+  );
+
+  res.status(201).json({ id: insertResult.rows[0].id as number });
+});
+
+app.delete("/meal-plans/:id", async (req, res) => {
+  const planId = Number(req.params.id);
+  if (!Number.isInteger(planId) || planId <= 0) {
+    return res.status(400).json({ error: "Invalid meal plan id" });
+  }
+
+  const result = await pool.query("DELETE FROM meal_plans WHERE id = $1", [planId]);
+  if (result.rowCount === 0) {
+    return res.status(404).json({ error: "Meal plan not found" });
+  }
+
+  res.json({ ok: true });
+});
+
 app.post("/uploads/photo", upload.single("photo"), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "Photo is required" });
@@ -372,6 +448,37 @@ function validateRecipePayload(payload: unknown): { valid: true; data: RecipeInp
   };
 }
 
+function validateMealPlanPayload(payload: unknown): { valid: true; data: MealPlanInput } | { valid: false; error: string } {
+  if (typeof payload !== "object" || payload === null) {
+    return { valid: false, error: "Payload must be an object" };
+  }
+  const obj = payload as Record<string, unknown>;
+  const recipeId = Number(obj.recipeId);
+  const startDate = typeof obj.startDate === "string" ? obj.startDate.trim() : "";
+  const endDate = typeof obj.endDate === "string" ? obj.endDate.trim() : "";
+
+  if (!Number.isInteger(recipeId) || recipeId <= 0) {
+    return { valid: false, error: "recipeId must be a positive integer" };
+  }
+  const parsedStartDate = parseIsoDate(startDate);
+  const parsedEndDate = parseIsoDate(endDate);
+  if (!parsedStartDate || !parsedEndDate) {
+    return { valid: false, error: "Dates must be in YYYY-MM-DD format" };
+  }
+  if (parsedEndDate.getTime() < parsedStartDate.getTime()) {
+    return { valid: false, error: "endDate must be greater than or equal to startDate" };
+  }
+
+  return {
+    valid: true,
+    data: {
+      recipeId,
+      startDate: toIsoDate(parsedStartDate),
+      endDate: toIsoDate(parsedEndDate)
+    }
+  };
+}
+
 async function insertIngredients(client: import("pg").PoolClient, recipeId: number, items: IngredientInput[]) {
   for (let index = 0; index < items.length; index += 1) {
     const item = items[index];
@@ -418,4 +525,33 @@ async function upsertRecipeTags(client: import("pg").PoolClient, recipeId: numbe
       [recipeId, tagResult.rows[0].id]
     );
   }
+}
+
+function parseIsoDate(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
+    return null;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return parsed;
+}
+
+function addDays(baseDate: Date, days: number): Date {
+  const nextDate = new Date(baseDate.getTime());
+  nextDate.setUTCDate(nextDate.getUTCDate() + days);
+  return nextDate;
+}
+
+function toIsoDate(value: Date): string {
+  return value.toISOString().slice(0, 10);
 }

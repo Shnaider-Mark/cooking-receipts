@@ -1,4 +1,4 @@
-import type { RecipeDetail, RecipeListItem, RecipePayload } from "./types";
+import type { MealPlanItem, MealPlanPayload, RecipeDetail, RecipeListItem, RecipePayload } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
@@ -73,4 +73,24 @@ export async function uploadPhoto(file: File): Promise<string> {
     body: formData
   });
   return response.url;
+}
+
+export async function fetchMealPlans(weekStart: string) {
+  return request<MealPlanItem[]>(`/meal-plans?weekStart=${encodeURIComponent(weekStart)}`);
+}
+
+export async function createMealPlan(payload: MealPlanPayload) {
+  return request<{ id: number }>("/meal-plans", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteMealPlan(id: number) {
+  return request<{ ok: true }>(`/meal-plans/${id}`, {
+    method: "DELETE"
+  });
 }
