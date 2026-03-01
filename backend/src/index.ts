@@ -35,6 +35,12 @@ type MealPlanInput = {
   endDate: string;
 };
 
+type ShoppingListEntry = {
+  name: string;
+  unit: string;
+  amount: string;
+};
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -359,6 +365,53 @@ app.delete("/meal-plans/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+app.get("/shopping-list", async (req, res) => {
+  const weekStartRaw = typeof req.query.weekStart === "string" ? req.query.weekStart : "";
+  const weekStart = parseIsoDate(weekStartRaw);
+  if (!weekStart) {
+    return res.status(400).json({ error: "weekStart must be in YYYY-MM-DD format" });
+  }
+  const weekEnd = addDays(weekStart, 6);
+  const weekStartDate = toIsoDate(weekStart);
+  const weekEndDate = toIsoDate(weekEnd);
+
+  const { rows } = await pool.query(
+    `
+    SELECT
+      mp.id AS "planId",
+      r.title AS "recipeTitle",
+      ri.name,
+      ri.amount,
+      ri.unit
+    FROM meal_plans mp
+    JOIN recipes r ON r.id = mp.recipe_id
+    JOIN recipe_ingredients ri ON ri.recipe_id = r.id
+    WHERE mp.start_date <= $2::date
+      AND mp.end_date >= $1::date
+    ORDER BY ri.name ASC
+    `,
+    [weekStartDate, weekEndDate]
+  );
+
+  const aggregated = aggregateShoppingList(
+    rows.map((row: { planId: number; name: string; amount: string; unit: string }) => ({
+      planId: row.planId,
+      name: row.name,
+      amount: row.amount,
+      unit: row.unit
+    }))
+  );
+
+  const text = buildShoppingListText(weekStartDate, weekEndDate, aggregated);
+
+  res.json({
+    weekStart: weekStartDate,
+    weekEnd: weekEndDate,
+    items: aggregated,
+    text
+  });
+});
+
 app.post("/uploads/photo", upload.single("photo"), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "Photo is required" });
@@ -554,4 +607,85 @@ function addDays(baseDate: Date, days: number): Date {
 
 function toIsoDate(value: Date): string {
   return value.toISOString().slice(0, 10);
+}
+
+function aggregateShoppingList(
+  rows: Array<{ planId: number; name: string; amount: string; unit: string }>
+): ShoppingListEntry[] {
+  const byKey = new Map<string, { displayName: string; displayUnit: string; amounts: string[]; numericTotal: number | null }>();
+  const processedRows = dedupeByPlanIngredient(rows);
+
+  for (const row of processedRows) {
+    const name = row.name.trim();
+    const unit = row.unit.trim();
+    const amount = row.amount.trim();
+    if (!name || !unit || !amount) {
+      continue;
+    }
+    const key = `${name.toLocaleLowerCase("ru-RU")}::${unit.toLocaleLowerCase("ru-RU")}`;
+    const current = byKey.get(key) ?? { displayName: name, displayUnit: unit, amounts: [], numericTotal: 0 };
+    const numericAmount = parseNumericAmount(amount);
+
+    if (numericAmount === null || current.numericTotal === null) {
+      current.numericTotal = null;
+      current.amounts.push(amount);
+    } else {
+      current.numericTotal += numericAmount;
+    }
+
+    byKey.set(key, current);
+  }
+
+  return Array.from(byKey.entries())
+    .map(([key, value]) => {
+      const amount =
+        value.numericTotal !== null
+          ? formatNumericAmount(value.numericTotal)
+          : Array.from(new Set(value.amounts)).join(" + ");
+      return {
+        name: value.displayName,
+        unit: value.displayUnit,
+        amount
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, "ru-RU"));
+}
+
+function buildShoppingListText(weekStart: string, weekEnd: string, items: ShoppingListEntry[]): string {
+  const header = `Список покупок (${weekStart} - ${weekEnd})`;
+  if (items.length === 0) {
+    return `${header}\n\nНа выбранную неделю ничего не запланировано.`;
+  }
+  const lines = items.map((item) => `- [ ] ${item.name} — ${item.amount} ${item.unit}`);
+  return [header, "", ...lines].join("\n");
+}
+
+function parseNumericAmount(amount: string): number | null {
+  const normalized = amount.replace(",", ".").trim();
+  if (!/^\d+(\.\d+)?$/.test(normalized)) {
+    return null;
+  }
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatNumericAmount(value: number): string {
+  const rounded = Math.round(value * 1000) / 1000;
+  return Number.isInteger(rounded) ? String(rounded) : String(rounded).replace(/\.?0+$/, "");
+}
+
+function dedupeByPlanIngredient(
+  rows: Array<{ planId: number; name: string; amount: string; unit: string }>
+): Array<{ planId: number; name: string; amount: string; unit: string }> {
+  const seen = new Set<string>();
+  const output: Array<{ planId: number; name: string; amount: string; unit: string }> = [];
+  for (const row of rows) {
+    const signature = `${row.planId}|${row.name}|${row.amount}|${row.unit}`;
+    if (seen.has(signature)) {
+      continue;
+    }
+    seen.add(signature);
+    output.push(row);
+  }
+  return output;
 }

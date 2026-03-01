@@ -538,6 +538,13 @@ label {
   flex-wrap: wrap;
 }
 
+.planner-shopping-actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .planner-week-label {
   font-weight: 600;
   color: #0f172a;
@@ -617,6 +624,22 @@ label {
 .planner-item-remove {
   padding: 6px 8px;
   font-size: 12px;
+}
+
+.shopping-list-card {
+  padding: 14px;
+}
+
+.shopping-list-card h3 {
+  margin: 0 0 10px;
+}
+
+.shopping-list-output {
+  width: 100%;
+  resize: vertical;
+  min-height: 180px;
+  line-height: 1.5;
+  font-family: Consolas, "Courier New", monospace;
 }
 
 .form-header {
@@ -775,5 +798,9 @@ label {
 
   .planner-item {
     flex-direction: column;
+  }
+
+  .planner-shopping-actions .btn {
+    flex: 1 1 auto;
   }
 }

@@ -7,6 +7,7 @@ import {
   fetchMealPlans,
   fetchRecipe,
   fetchRecipes,
+  fetchShoppingList,
   getImageUrl,
   updateRecipe,
   uploadPhoto
@@ -791,6 +792,8 @@ function MealPlanner() {
   const [startDate, setStartDate] = useState(weekStart);
   const [endDate, setEndDate] = useState(weekStart);
   const [loading, setLoading] = useState(false);
+  const [shoppingLoading, setShoppingLoading] = useState(false);
+  const [shoppingListText, setShoppingListText] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 
   const weekDays = useMemo(() => {
@@ -816,6 +819,7 @@ function MealPlanner() {
   useEffect(() => {
     setStartDate(weekStart);
     setEndDate(weekStart);
+    setShoppingListText("");
   }, [weekStart]);
 
   useEffect(() => {
@@ -870,6 +874,32 @@ function MealPlanner() {
     }
   }
 
+  async function onGenerateShoppingList() {
+    try {
+      setShoppingLoading(true);
+      setMessage(null);
+      const response = await fetchShoppingList(weekStart);
+      setShoppingListText(response.text);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Не удалось собрать список покупок");
+    } finally {
+      setShoppingLoading(false);
+    }
+  }
+
+  async function onCopyShoppingList() {
+    if (!shoppingListText.trim()) {
+      setMessage("Сначала сформируйте список покупок");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(shoppingListText);
+      setMessage("Список покупок скопирован в буфер обмена");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Не удалось скопировать список");
+    }
+  }
+
   return (
     <section className="planner-view">
       <div className="planner-topbar card">
@@ -882,6 +912,14 @@ function MealPlanner() {
           </div>
           <button type="button" className="btn btn-ghost" onClick={() => setWeekStart(toIsoDate(addDaysLocal(weekStart, 7)))}>
             Неделя вперед →
+          </button>
+        </div>
+        <div className="planner-shopping-actions">
+          <button type="button" className="btn btn-primary" onClick={() => void onGenerateShoppingList()} disabled={shoppingLoading}>
+            {shoppingLoading ? "Собираю список..." : "Сформировать список покупок"}
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={() => void onCopyShoppingList()}>
+            Скопировать для Telegram
           </button>
         </div>
       </div>
@@ -920,6 +958,17 @@ function MealPlanner() {
         </div>
       </form>
       {message && <div className="alert">{message}</div>}
+      {shoppingListText && (
+        <section className="card shopping-list-card">
+          <h3>Список покупок</h3>
+          <textarea
+            className="shopping-list-output"
+            value={shoppingListText}
+            readOnly
+            rows={Math.min(18, Math.max(8, shoppingListText.split("\n").length + 1))}
+          />
+        </section>
+      )}
 
       <div className="planner-grid">
         {weekDays.map((day) => {

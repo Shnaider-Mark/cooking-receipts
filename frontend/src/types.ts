@@ -63,3 +63,16 @@ export type MealPlanPayload = {
   startDate: string;
   endDate: string;
 };
+
+export type ShoppingListItem = {
+  name: string;
+  unit: string;
+  amount: string;
+};
+
+export type ShoppingListResponse = {
+  weekStart: string;
+  weekEnd: string;
+  items: ShoppingListItem[];
+  text: string;
+};

@@ -1,4 +1,11 @@
-import type { MealPlanItem, MealPlanPayload, RecipeDetail, RecipeListItem, RecipePayload } from "./types";
+import type {
+  MealPlanItem,
+  MealPlanPayload,
+  RecipeDetail,
+  RecipeListItem,
+  RecipePayload,
+  ShoppingListResponse
+} from "./types";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
@@ -93,4 +100,8 @@ export async function deleteMealPlan(id: number) {
   return request<{ ok: true }>(`/meal-plans/${id}`, {
     method: "DELETE"
   });
+}
+
+export async function fetchShoppingList(weekStart: string) {
+  return request<ShoppingListResponse>(`/shopping-list?weekStart=${encodeURIComponent(weekStart)}`);
 }
