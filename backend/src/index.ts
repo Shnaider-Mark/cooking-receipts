@@ -20,6 +20,7 @@ type RecipeInput = {
   title: string;
   category: string;
   description?: string;
+  sourceUrl?: string | null;
   servings?: number;
   prepTimeMin?: number;
   cookTimeMin?: number;
@@ -90,6 +91,7 @@ app.get("/recipes", async (req, res) => {
       r.title,
       r.category,
       r.description,
+      r.source_url AS "sourceUrl",
       r.servings,
       r.prep_time_min AS "prepTimeMin",
       r.cook_time_min AS "cookTimeMin",
@@ -131,6 +133,7 @@ app.get("/recipes/:id", async (req, res) => {
       r.title,
       r.category,
       r.description,
+      r.source_url AS "sourceUrl",
       r.servings,
       r.prep_time_min AS "prepTimeMin",
       r.cook_time_min AS "cookTimeMin",
@@ -233,14 +236,15 @@ app.post("/recipes", async (req, res) => {
   const recipe = await withTransaction(async (client) => {
     const insertRecipeResult = await client.query(
       `
-      INSERT INTO recipes (title, category, description, servings, prep_time_min, cook_time_min, photo_url)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO recipes (title, category, description, source_url, servings, prep_time_min, cook_time_min, photo_url)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING id
       `,
       [
         data.title,
         data.category,
         data.description ?? "",
+        data.sourceUrl ?? null,
         data.servings ?? 1,
         data.prepTimeMin ?? 0,
         data.cookTimeMin ?? 0,
@@ -282,17 +286,19 @@ app.put("/recipes/:id", async (req, res) => {
       SET title = $1,
           category = $2,
           description = $3,
-          servings = $4,
-          prep_time_min = $5,
-          cook_time_min = $6,
-          photo_url = $7,
+          source_url = $4,
+          servings = $5,
+          prep_time_min = $6,
+          cook_time_min = $7,
+          photo_url = $8,
           updated_at = NOW()
-      WHERE id = $8
+      WHERE id = $9
       `,
       [
         data.title,
         data.category,
         data.description ?? "",
+        data.sourceUrl ?? null,
         data.servings ?? 1,
         data.prepTimeMin ?? 0,
         data.cookTimeMin ?? 0,
@@ -442,6 +448,10 @@ function validateRecipePayload(payload: unknown): { valid: true; data: RecipeInp
   if (!category) {
     return { valid: false, error: "Category is required" };
   }
+  const sourceUrlRaw = typeof obj.sourceUrl === "string" ? obj.sourceUrl.trim() : "";
+  if (sourceUrlRaw && !isValidWebUrl(sourceUrlRaw)) {
+    return { valid: false, error: "sourceUrl must be a valid http/https URL" };
+  }
 
   if (!Array.isArray(obj.ingredients) || obj.ingredients.length === 0) {
     return { valid: false, error: "At least one ingredient is required" };
@@ -490,6 +500,7 @@ function validateRecipePayload(payload: unknown): { valid: true; data: RecipeInp
       title,
       category,
       description: typeof obj.description === "string" ? obj.description.trim() : "",
+      sourceUrl: sourceUrlRaw || null,
       servings: Number(obj.servings) > 0 ? Number(obj.servings) : 1,
       prepTimeMin: Number(obj.prepTimeMin) >= 0 ? Number(obj.prepTimeMin) : 0,
       cookTimeMin: Number(obj.cookTimeMin) >= 0 ? Number(obj.cookTimeMin) : 0,
@@ -688,4 +699,13 @@ function dedupeByPlanIngredient(
     output.push(row);
   }
   return output;
+}
+
+function isValidWebUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
 }

@@ -3,6 +3,7 @@ export type RecipeListItem = {
   title: string;
   category: string;
   description: string;
+  sourceUrl: string | null;
   servings: number;
   prepTimeMin: number;
   cookTimeMin: number;
@@ -24,6 +25,7 @@ export type RecipeDetail = {
   title: string;
   category: string;
   description: string;
+  sourceUrl: string | null;
   servings: number;
   prepTimeMin: number;
   cookTimeMin: number;
@@ -39,6 +41,7 @@ export type RecipePayload = {
   title: string;
   category: string;
   description: string;
+  sourceUrl: string | null;
   servings: number;
   prepTimeMin: number;
   cookTimeMin: number;

@@ -14,6 +14,9 @@ CREATE TABLE IF NOT EXISTS recipes (
 ALTER TABLE recipes
   ADD COLUMN IF NOT EXISTS category TEXT;
 
+ALTER TABLE recipes
+  ADD COLUMN IF NOT EXISTS source_url TEXT;
+
 UPDATE recipes
 SET category = 'Другое'
 WHERE category IS NULL OR btrim(category) = '';

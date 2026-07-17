@@ -26,6 +26,7 @@ const EMPTY_RECIPE: RecipePayload = {
   title: "",
   category: "",
   description: "",
+  sourceUrl: null,
   servings: 1,
   prepTimeMin: 0,
   cookTimeMin: 0,
@@ -279,6 +280,14 @@ export default function App() {
             <h2>{selectedRecipe.title}</h2>
             <span className="category-badge">{selectedRecipe.category}</span>
           </div>
+          {selectedRecipe.sourceUrl && (
+            <p className="detail-description">
+              Источник:{" "}
+              <a href={selectedRecipe.sourceUrl} target="_blank" rel="noreferrer">
+                {selectedRecipe.sourceUrl}
+              </a>
+            </p>
+          )}
           {getImageUrl(selectedRecipe.photoUrl) && (
             <img src={getImageUrl(selectedRecipe.photoUrl) ?? ""} alt={selectedRecipe.title} className="photo" />
           )}
@@ -399,6 +408,7 @@ function RecipeForm(props: { recipeId: number | null; onCancel: () => void; onSa
         title: recipe.title,
         category: recipe.category,
         description: recipe.description ?? "",
+        sourceUrl: recipe.sourceUrl ?? null,
         servings: recipe.servings,
         prepTimeMin: recipe.prepTimeMin,
         cookTimeMin: recipe.cookTimeMin,
@@ -539,6 +549,7 @@ function RecipeForm(props: { recipeId: number | null; onCancel: () => void; onSa
       title: form.title.trim(),
       description: form.description.trim(),
       category: form.category.trim(),
+      sourceUrl: form.sourceUrl ? form.sourceUrl.trim() : null,
       ingredients: form.ingredients.map((item) => ({
         ...item,
         section: item.section.trim(),
@@ -606,6 +617,16 @@ function RecipeForm(props: { recipeId: number | null; onCancel: () => void; onSa
             value={form.description}
             rows={3}
             onChange={(event) => setForm({ ...form, description: event.target.value })}
+          />
+        </label>
+
+        <label>
+          Ссылка на источник (необязательно)
+          <input
+            type="url"
+            placeholder="https://instagram.com/..."
+            value={form.sourceUrl ?? ""}
+            onChange={(event) => setForm({ ...form, sourceUrl: event.target.value || null })}
           />
         </label>
 
@@ -818,7 +839,7 @@ function MealPlanner() {
 
   useEffect(() => {
     setStartDate(weekStart);
-    setEndDate(weekStart);
+    setEndDate(toIsoDate(addDaysLocal(weekStart, 1)));
     setShoppingListText("");
   }, [weekStart]);
 
@@ -845,8 +866,8 @@ function MealPlanner() {
       setMessage("Выберите рецепт");
       return;
     }
-    if (endDate < startDate) {
-      setMessage("Дата окончания не может быть раньше даты начала");
+    if (endDate <= startDate) {
+      setMessage("Дата окончания должна быть минимум на 1 день позже даты начала");
       return;
     }
     try {
@@ -900,6 +921,12 @@ function MealPlanner() {
     }
   }
 
+  function onStartDateChange(nextStartDate: string) {
+    const nextDefaultEndDate = toIsoDate(addDaysLocal(nextStartDate, 1));
+    setStartDate(nextStartDate);
+    setEndDate(nextDefaultEndDate);
+  }
+
   return (
     <section className="planner-view">
       <div className="planner-topbar card">
@@ -944,11 +971,17 @@ function MealPlanner() {
           </label>
           <label>
             С даты
-            <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} required />
+            <input type="date" value={startDate} onChange={(event) => onStartDateChange(event.target.value)} required />
           </label>
           <label>
             По дату
-            <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} required />
+            <input
+              type="date"
+              min={toIsoDate(addDaysLocal(startDate, 1))}
+              value={endDate}
+              onChange={(event) => setEndDate(event.target.value)}
+              required
+            />
           </label>
           <div className="planner-form-actions">
             <button type="submit" className="btn btn-primary" disabled={loading}>
