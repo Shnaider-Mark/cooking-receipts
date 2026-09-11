@@ -767,34 +767,33 @@ function validateRecipePayload(payload: unknown): { valid: true; data: RecipeInp
   if (!title) {
     return { valid: false, error: "Title is required" };
   }
-  const mealCategory = typeof obj.mealCategory === "string" ? obj.mealCategory.trim() : "";
-  if (!mealCategory) {
-    return { valid: false, error: "Meal category is required" };
-  }
-  const subcategory = typeof obj.subcategory === "string" ? obj.subcategory.trim() : "";
-  if (!subcategory) {
-    return { valid: false, error: "Subcategory is required" };
-  }
-  const mainIngredient = typeof obj.mainIngredient === "string" ? obj.mainIngredient.trim() : "";
+  const legacyCategory = typeof obj.category === "string" ? obj.category.trim() : "";
+  const mealCategoryRaw = typeof obj.mealCategory === "string" ? obj.mealCategory.trim() : "";
+  const subcategoryRaw = typeof obj.subcategory === "string" ? obj.subcategory.trim() : "";
+  const mainIngredientRaw = typeof obj.mainIngredient === "string" ? obj.mainIngredient.trim() : "";
+  const mealCategory = mealCategoryRaw || "Ужин";
+  const subcategory = subcategoryRaw || "Другое";
+  const mainIngredient = mainIngredientRaw || legacyCategory;
   if (!mainIngredient) {
-    return { valid: false, error: "Main ingredient is required" };
+    return { valid: false, error: "Выберите основной ингредиент" };
   }
   const sourceUrlRaw = typeof obj.sourceUrl === "string" ? obj.sourceUrl.trim() : "";
   if (sourceUrlRaw && !isValidWebUrl(sourceUrlRaw)) {
-    return { valid: false, error: "sourceUrl must be a valid http/https URL" };
+    return { valid: false, error: "Ссылка на источник должна начинаться с http:// или https://" };
   }
 
   if (!Array.isArray(obj.ingredients) || obj.ingredients.length === 0) {
-    return { valid: false, error: "At least one ingredient is required" };
+    return { valid: false, error: "Добавьте хотя бы один ингредиент" };
   }
   if (!Array.isArray(obj.steps) || obj.steps.length === 0) {
-    return { valid: false, error: "At least one step is required" };
+    return { valid: false, error: "Добавьте хотя бы один шаг" };
   }
 
   const ingredients: IngredientInput[] = [];
+  const ingredientNamesSeen = new Set<string>();
   for (const item of obj.ingredients) {
     if (typeof item !== "object" || item === null) {
-      return { valid: false, error: "Ingredient must be an object" };
+      return { valid: false, error: "Некорректный ингредиент" };
     }
     const ingredient = item as Record<string, unknown>;
     const section = typeof ingredient.section === "string" ? ingredient.section.trim() : "";
@@ -802,8 +801,13 @@ function validateRecipePayload(payload: unknown): { valid: true; data: RecipeInp
     const amount = typeof ingredient.amount === "string" ? ingredient.amount.trim() : "";
     const unit = typeof ingredient.unit === "string" ? ingredient.unit.trim() : "";
     if (!section || !name || !amount || !unit) {
-      return { valid: false, error: "Ingredient fields are invalid" };
+      return { valid: false, error: "Заполните все поля ингредиента" };
     }
+    const normalizedName = name.toLocaleLowerCase("ru-RU");
+    if (ingredientNamesSeen.has(normalizedName)) {
+      return { valid: false, error: `Ингредиент "${name}" повторяется. Укажи его только один раз.` };
+    }
+    ingredientNamesSeen.add(normalizedName);
     ingredients.push({ section, name, amount, unit });
   }
 
@@ -811,7 +815,7 @@ function validateRecipePayload(payload: unknown): { valid: true; data: RecipeInp
   for (const item of obj.steps) {
     const step = typeof item === "string" ? item.trim() : "";
     if (!step) {
-      return { valid: false, error: "Step text cannot be empty" };
+      return { valid: false, error: "Текст шага не может быть пустым" };
     }
     steps.push(step);
   }

@@ -57,6 +57,7 @@ export default function App() {
   const [subcategoriesCatalog, setSubcategoriesCatalog] = useState<CatalogItem[]>([]);
   const [mainIngredientsCatalog, setMainIngredientsCatalog] = useState<CatalogItem[]>([]);
   const [ingredientsCatalog, setIngredientsCatalog] = useState<CatalogItem[]>([]);
+  const [dictionariesLoading, setDictionariesLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -130,6 +131,7 @@ export default function App() {
 
   async function loadDictionaries() {
     try {
+      setDictionariesLoading(true);
       const [mealCategoriesData, subcategoriesData, mainIngredientsData, ingredientsData] = await Promise.all([
         fetchMealCategories(),
         fetchSubcategories(),
@@ -142,6 +144,8 @@ export default function App() {
       setIngredientsCatalog(ingredientsData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось загрузить справочники");
+    } finally {
+      setDictionariesLoading(false);
     }
   }
 
@@ -261,17 +265,14 @@ export default function App() {
                       </option>
                     ))}
                   </select>
-                  <input
-                    list="ingredients-search-list"
-                    placeholder="Фильтр по ингредиенту"
-                    value={activeIngredient}
-                    onChange={(event) => setActiveIngredient(event.target.value)}
-                  />
-                  <datalist id="ingredients-search-list">
+                  <select value={activeIngredient} onChange={(event) => setActiveIngredient(event.target.value)}>
+                    <option value="">Все ингредиенты</option>
                     {ingredientOptions.map((ingredient) => (
-                      <option key={ingredient} value={ingredient} />
+                      <option key={ingredient} value={ingredient}>
+                        {ingredient}
+                      </option>
                     ))}
-                  </datalist>
+                  </select>
                 </div>
                 {hasActiveFilters && (
                   <button
@@ -457,6 +458,7 @@ export default function App() {
               subcategories={subcategories}
               mainIngredients={mainIngredients}
               ingredientOptions={ingredientOptions}
+              dictionariesLoading={dictionariesLoading}
               onCancel={() => setView({ mode: "list" })}
               onSaved={async (id) => {
                 await loadRecipes();
@@ -477,10 +479,11 @@ function RecipeForm(props: {
   subcategories: string[];
   mainIngredients: string[];
   ingredientOptions: string[];
+  dictionariesLoading: boolean;
   onCancel: () => void;
   onSaved: (id: number) => Promise<void>;
 }) {
-  const { recipeId, mealCategories, subcategories, mainIngredients, ingredientOptions, onCancel, onSaved } = props;
+  const { recipeId, mealCategories, subcategories, mainIngredients, ingredientOptions, dictionariesLoading, onCancel, onSaved } = props;
   const [form, setForm] = useState<RecipePayload>(EMPTY_RECIPE);
   const [tagsInput, setTagsInput] = useState("");
   const [newSectionName, setNewSectionName] = useState("");
@@ -643,9 +646,23 @@ function RecipeForm(props: {
     event.preventDefault();
     setSubmitting(true);
     setMessage(null);
+    if (dictionariesLoading || mealCategories.length === 0 || subcategories.length === 0 || mainIngredients.length === 0) {
+      setMessage("Справочники еще не готовы. Открой админку и добавь значения.");
+      setSubmitting(false);
+      return;
+    }
     const normalizedIngredientNames = form.ingredients
       .map((item) => item.name.trim().toLocaleLowerCase("ru-RU"))
       .filter(Boolean);
+    const duplicateIngredientNames = normalizedIngredientNames.filter(
+      (item, index) => normalizedIngredientNames.indexOf(item) !== index
+    );
+    if (duplicateIngredientNames.length > 0) {
+      const uniqueDuplicates = Array.from(new Set(duplicateIngredientNames));
+      setMessage(`Одинаковые ингредиенты нельзя добавлять дважды: ${uniqueDuplicates.join(", ")}`);
+      setSubmitting(false);
+      return;
+    }
     const missingIngredients = Array.from(new Set(normalizedIngredientNames)).filter((item) => !allowedIngredients.has(item));
     if (missingIngredients.length > 0) {
       setMessage(`Выберите ингредиенты из справочника: ${missingIngredients.join(", ")}`);
@@ -701,6 +718,10 @@ function RecipeForm(props: {
 
       <section className="form-section">
         <h3>Основное</h3>
+        {dictionariesLoading && <p className="list-meta">Загружаем справочники...</p>}
+        {!dictionariesLoading && (mealCategories.length === 0 || subcategories.length === 0 || mainIngredients.length === 0) && (
+          <p className="list-meta">Справочники пустые. Добавь записи в админке, чтобы создавать рецепты.</p>
+        )}
         <label>
           Название
           <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required />
@@ -935,7 +956,11 @@ function RecipeForm(props: {
       </section>
 
       <div className="actions form-actions">
-        <button type="submit" className="btn btn-primary" disabled={submitting}>
+        <button
+          type="submit"
+          className="btn btn-primary"
+          disabled={submitting || dictionariesLoading || mealCategories.length === 0 || subcategories.length === 0 || mainIngredients.length === 0}
+        >
           {submitting ? "Сохранение..." : "Сохранить"}
         </button>
         <button type="button" className="btn btn-ghost" onClick={onCancel}>
