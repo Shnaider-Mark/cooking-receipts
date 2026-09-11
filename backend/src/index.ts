@@ -18,7 +18,9 @@ type IngredientInput = {
 
 type RecipeInput = {
   title: string;
-  category: string;
+  mealCategory: string;
+  subcategory: string;
+  mainIngredient: string;
   description?: string;
   sourceUrl?: string | null;
   servings?: number;
@@ -34,6 +36,10 @@ type MealPlanInput = {
   recipeId: number;
   startDate: string;
   endDate: string;
+};
+
+type DictionaryInput = {
+  name: string;
 };
 
 type ShoppingListEntry = {
@@ -79,16 +85,270 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+app.get("/admin", (_req, res) => {
+  res.type("html").send(getAdminPageHtml());
+});
+
+app.get("/catalog/meal-categories", async (_req, res) => {
+  const { rows } = await pool.query(
+    `
+    SELECT id, name
+    FROM meal_categories
+    ORDER BY name ASC
+    `
+  );
+  res.json(rows);
+});
+
+app.post("/catalog/meal-categories", async (req, res) => {
+  const validation = validateDictionaryPayload(req.body);
+  if (!validation.valid) {
+    return res.status(400).json({ error: validation.error });
+  }
+  try {
+    const result = await pool.query(
+      `
+      INSERT INTO meal_categories (name)
+      VALUES ($1)
+      RETURNING id
+      `,
+      [validation.data.name]
+    );
+    return res.status(201).json({ id: result.rows[0].id as number });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ error: "Категория уже существует" });
+    }
+    throw error;
+  }
+});
+
+app.delete("/catalog/meal-categories/:id", async (req, res) => {
+  const entryId = Number(req.params.id);
+  if (!Number.isInteger(entryId) || entryId <= 0) {
+    return res.status(400).json({ error: "Invalid meal category id" });
+  }
+
+  const usedInRecipes = await pool.query(
+    `
+    SELECT 1
+    FROM recipes r
+    JOIN meal_categories c ON lower(c.name) = lower(r.meal_category)
+    WHERE c.id = $1
+    LIMIT 1
+    `,
+    [entryId]
+  );
+  if ((usedInRecipes.rowCount ?? 0) > 0) {
+    return res.status(409).json({ error: "Нельзя удалить категорию: она используется в рецептах" });
+  }
+
+  const result = await pool.query("DELETE FROM meal_categories WHERE id = $1", [entryId]);
+  if (result.rowCount === 0) {
+    return res.status(404).json({ error: "Meal category not found" });
+  }
+  res.json({ ok: true });
+});
+
+app.get("/catalog/subcategories", async (_req, res) => {
+  const { rows } = await pool.query(
+    `
+    SELECT id, name
+    FROM subcategories
+    ORDER BY name ASC
+    `
+  );
+  res.json(rows);
+});
+
+app.post("/catalog/subcategories", async (req, res) => {
+  const validation = validateDictionaryPayload(req.body);
+  if (!validation.valid) {
+    return res.status(400).json({ error: validation.error });
+  }
+  try {
+    const result = await pool.query(
+      `
+      INSERT INTO subcategories (name)
+      VALUES ($1)
+      RETURNING id
+      `,
+      [validation.data.name]
+    );
+    return res.status(201).json({ id: result.rows[0].id as number });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ error: "Подкатегория уже существует" });
+    }
+    throw error;
+  }
+});
+
+app.delete("/catalog/subcategories/:id", async (req, res) => {
+  const entryId = Number(req.params.id);
+  if (!Number.isInteger(entryId) || entryId <= 0) {
+    return res.status(400).json({ error: "Invalid subcategory id" });
+  }
+
+  const usedInRecipes = await pool.query(
+    `
+    SELECT 1
+    FROM recipes r
+    JOIN subcategories c ON lower(c.name) = lower(r.subcategory)
+    WHERE c.id = $1
+    LIMIT 1
+    `,
+    [entryId]
+  );
+  if ((usedInRecipes.rowCount ?? 0) > 0) {
+    return res.status(409).json({ error: "Нельзя удалить подкатегорию: она используется в рецептах" });
+  }
+
+  const result = await pool.query("DELETE FROM subcategories WHERE id = $1", [entryId]);
+  if (result.rowCount === 0) {
+    return res.status(404).json({ error: "Subcategory not found" });
+  }
+  res.json({ ok: true });
+});
+
+app.get("/catalog/main-ingredients", async (_req, res) => {
+  const { rows } = await pool.query(
+    `
+    SELECT id, name
+    FROM categories
+    ORDER BY name ASC
+    `
+  );
+  res.json(rows);
+});
+
+app.post("/catalog/main-ingredients", async (req, res) => {
+  const validation = validateDictionaryPayload(req.body);
+  if (!validation.valid) {
+    return res.status(400).json({ error: validation.error });
+  }
+  try {
+    const result = await pool.query(
+      `
+      INSERT INTO categories (name)
+      VALUES ($1)
+      RETURNING id
+      `,
+      [validation.data.name]
+    );
+    return res.status(201).json({ id: result.rows[0].id as number });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ error: "Основной ингредиент уже существует" });
+    }
+    throw error;
+  }
+});
+
+app.delete("/catalog/main-ingredients/:id", async (req, res) => {
+  const entryId = Number(req.params.id);
+  if (!Number.isInteger(entryId) || entryId <= 0) {
+    return res.status(400).json({ error: "Invalid main ingredient id" });
+  }
+
+  const usedInRecipes = await pool.query(
+    `
+    SELECT 1
+    FROM recipes r
+    JOIN categories c ON lower(c.name) = lower(r.main_ingredient)
+    WHERE c.id = $1
+    LIMIT 1
+    `,
+    [entryId]
+  );
+  if ((usedInRecipes.rowCount ?? 0) > 0) {
+    return res.status(409).json({ error: "Нельзя удалить основной ингредиент: он используется в рецептах" });
+  }
+
+  const result = await pool.query("DELETE FROM categories WHERE id = $1", [entryId]);
+  if (result.rowCount === 0) {
+    return res.status(404).json({ error: "Main ingredient not found" });
+  }
+  res.json({ ok: true });
+});
+
+app.get("/catalog/ingredients", async (_req, res) => {
+  const { rows } = await pool.query(
+    `
+    SELECT id, name
+    FROM ingredients_catalog
+    ORDER BY name ASC
+    `
+  );
+  res.json(rows);
+});
+
+app.post("/catalog/ingredients", async (req, res) => {
+  const validation = validateDictionaryPayload(req.body);
+  if (!validation.valid) {
+    return res.status(400).json({ error: validation.error });
+  }
+  try {
+    const result = await pool.query(
+      `
+      INSERT INTO ingredients_catalog (name)
+      VALUES ($1)
+      RETURNING id
+      `,
+      [validation.data.name]
+    );
+    return res.status(201).json({ id: result.rows[0].id as number });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ error: "Ингредиент уже существует" });
+    }
+    throw error;
+  }
+});
+
+app.delete("/catalog/ingredients/:id", async (req, res) => {
+  const ingredientId = Number(req.params.id);
+  if (!Number.isInteger(ingredientId) || ingredientId <= 0) {
+    return res.status(400).json({ error: "Invalid ingredient id" });
+  }
+
+  const usedInRecipes = await pool.query(
+    `
+    SELECT 1
+    FROM recipe_ingredients ri
+    JOIN ingredients_catalog ic ON lower(ic.name) = lower(ri.name)
+    WHERE ic.id = $1
+    LIMIT 1
+    `,
+    [ingredientId]
+  );
+  if ((usedInRecipes.rowCount ?? 0) > 0) {
+    return res.status(409).json({ error: "Нельзя удалить ингредиент: он используется в рецептах" });
+  }
+
+  const result = await pool.query("DELETE FROM ingredients_catalog WHERE id = $1", [ingredientId]);
+  if (result.rowCount === 0) {
+    return res.status(404).json({ error: "Ingredient not found" });
+  }
+  res.json({ ok: true });
+});
+
 app.get("/recipes", async (req, res) => {
   const query = typeof req.query.q === "string" ? req.query.q.trim() : null;
   const tag = typeof req.query.tag === "string" ? req.query.tag.trim() : null;
-  const category = typeof req.query.category === "string" ? req.query.category.trim() : null;
+  const mealCategory = typeof req.query.mealCategory === "string" ? req.query.mealCategory.trim() : null;
+  const subcategory = typeof req.query.subcategory === "string" ? req.query.subcategory.trim() : null;
+  const mainIngredient = typeof req.query.mainIngredient === "string" ? req.query.mainIngredient.trim() : null;
+  const ingredient = typeof req.query.ingredient === "string" ? req.query.ingredient.trim() : null;
 
   const { rows } = await pool.query(
     `
     SELECT
       r.id,
       r.title,
+      r.meal_category AS "mealCategory",
+      r.subcategory,
+      r.main_ingredient AS "mainIngredient",
       r.category,
       r.description,
       r.source_url AS "sourceUrl",
@@ -110,11 +370,18 @@ app.get("/recipes", async (req, res) => {
         JOIN tags t2 ON t2.id = rt2.tag_id
         WHERE rt2.recipe_id = r.id AND t2.name = $2
       ))
-      AND ($3::text IS NULL OR r.category = $3)
+      AND ($3::text IS NULL OR r.meal_category = $3)
+      AND ($4::text IS NULL OR r.subcategory = $4)
+      AND ($5::text IS NULL OR r.main_ingredient = $5)
+      AND ($6::text IS NULL OR EXISTS (
+        SELECT 1
+        FROM recipe_ingredients ri2
+        WHERE ri2.recipe_id = r.id AND lower(ri2.name) = lower($6)
+      ))
     GROUP BY r.id
     ORDER BY r.updated_at DESC
     `,
-    [query, tag, category]
+    [query, tag, mealCategory, subcategory, mainIngredient, ingredient]
   );
 
   res.json(rows);
@@ -131,6 +398,9 @@ app.get("/recipes/:id", async (req, res) => {
     SELECT
       r.id,
       r.title,
+      r.meal_category AS "mealCategory",
+      r.subcategory,
+      r.main_ingredient AS "mainIngredient",
       r.category,
       r.description,
       r.source_url AS "sourceUrl",
@@ -213,7 +483,7 @@ app.get("/meal-plans", async (req, res) => {
       mp.end_date::text AS "endDate",
       mp.created_at AS "createdAt",
       r.title AS "recipeTitle",
-      r.category AS "recipeCategory"
+      r.main_ingredient AS "recipeCategory"
     FROM meal_plans mp
     JOIN recipes r ON r.id = mp.recipe_id
     WHERE mp.start_date <= $2::date
@@ -233,16 +503,47 @@ app.post("/recipes", async (req, res) => {
   }
   const data = validation.data;
 
+  const mealCategoryExists = await dictionaryValueExists("meal_categories", data.mealCategory);
+  if (!mealCategoryExists) {
+    return res.status(400).json({ error: "Категория не найдена в админ-справочнике" });
+  }
+  const subcategoryExists = await dictionaryValueExists("subcategories", data.subcategory);
+  if (!subcategoryExists) {
+    return res.status(400).json({ error: "Подкатегория не найдена в админ-справочнике" });
+  }
+  const mainIngredientExists = await dictionaryValueExists("categories", data.mainIngredient);
+  if (!mainIngredientExists) {
+    return res.status(400).json({ error: "Основной ингредиент не найден в админ-справочнике" });
+  }
+  const missingIngredients = await findMissingIngredients(data.ingredients.map((item) => item.name));
+  if (missingIngredients.length > 0) {
+    return res.status(400).json({ error: `Ингредиенты не найдены в админ-справочнике: ${missingIngredients.join(", ")}` });
+  }
+
   const recipe = await withTransaction(async (client) => {
     const insertRecipeResult = await client.query(
       `
-      INSERT INTO recipes (title, category, description, source_url, servings, prep_time_min, cook_time_min, photo_url)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO recipes (
+        title,
+        meal_category,
+        subcategory,
+        main_ingredient,
+        category,
+        description,
+        source_url,
+        servings,
+        prep_time_min,
+        cook_time_min,
+        photo_url
+      )
+      VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9, $10)
       RETURNING id
       `,
       [
         data.title,
-        data.category,
+        data.mealCategory,
+        data.subcategory,
+        data.mainIngredient,
         data.description ?? "",
         data.sourceUrl ?? null,
         data.servings ?? 1,
@@ -274,6 +575,23 @@ app.put("/recipes/:id", async (req, res) => {
   }
   const data = validation.data;
 
+  const mealCategoryExists = await dictionaryValueExists("meal_categories", data.mealCategory);
+  if (!mealCategoryExists) {
+    return res.status(400).json({ error: "Категория не найдена в админ-справочнике" });
+  }
+  const subcategoryExists = await dictionaryValueExists("subcategories", data.subcategory);
+  if (!subcategoryExists) {
+    return res.status(400).json({ error: "Подкатегория не найдена в админ-справочнике" });
+  }
+  const mainIngredientExists = await dictionaryValueExists("categories", data.mainIngredient);
+  if (!mainIngredientExists) {
+    return res.status(400).json({ error: "Основной ингредиент не найден в админ-справочнике" });
+  }
+  const missingIngredients = await findMissingIngredients(data.ingredients.map((item) => item.name));
+  if (missingIngredients.length > 0) {
+    return res.status(400).json({ error: `Ингредиенты не найдены в админ-справочнике: ${missingIngredients.join(", ")}` });
+  }
+
   const exists = await pool.query("SELECT id FROM recipes WHERE id = $1", [recipeId]);
   if (exists.rowCount === 0) {
     return res.status(404).json({ error: "Recipe not found" });
@@ -284,19 +602,24 @@ app.put("/recipes/:id", async (req, res) => {
       `
       UPDATE recipes
       SET title = $1,
-          category = $2,
-          description = $3,
-          source_url = $4,
-          servings = $5,
-          prep_time_min = $6,
-          cook_time_min = $7,
-          photo_url = $8,
+          meal_category = $2,
+          subcategory = $3,
+          main_ingredient = $4,
+          category = $4,
+          description = $5,
+          source_url = $6,
+          servings = $7,
+          prep_time_min = $8,
+          cook_time_min = $9,
+          photo_url = $10,
           updated_at = NOW()
-      WHERE id = $9
+      WHERE id = $11
       `,
       [
         data.title,
-        data.category,
+        data.mealCategory,
+        data.subcategory,
+        data.mainIngredient,
         data.description ?? "",
         data.sourceUrl ?? null,
         data.servings ?? 1,
@@ -444,9 +767,17 @@ function validateRecipePayload(payload: unknown): { valid: true; data: RecipeInp
   if (!title) {
     return { valid: false, error: "Title is required" };
   }
-  const category = typeof obj.category === "string" ? obj.category.trim() : "";
-  if (!category) {
-    return { valid: false, error: "Category is required" };
+  const mealCategory = typeof obj.mealCategory === "string" ? obj.mealCategory.trim() : "";
+  if (!mealCategory) {
+    return { valid: false, error: "Meal category is required" };
+  }
+  const subcategory = typeof obj.subcategory === "string" ? obj.subcategory.trim() : "";
+  if (!subcategory) {
+    return { valid: false, error: "Subcategory is required" };
+  }
+  const mainIngredient = typeof obj.mainIngredient === "string" ? obj.mainIngredient.trim() : "";
+  if (!mainIngredient) {
+    return { valid: false, error: "Main ingredient is required" };
   }
   const sourceUrlRaw = typeof obj.sourceUrl === "string" ? obj.sourceUrl.trim() : "";
   if (sourceUrlRaw && !isValidWebUrl(sourceUrlRaw)) {
@@ -498,7 +829,9 @@ function validateRecipePayload(payload: unknown): { valid: true; data: RecipeInp
     valid: true,
     data: {
       title,
-      category,
+      mealCategory,
+      subcategory,
+      mainIngredient,
       description: typeof obj.description === "string" ? obj.description.trim() : "",
       sourceUrl: sourceUrlRaw || null,
       servings: Number(obj.servings) > 0 ? Number(obj.servings) : 1,
@@ -708,4 +1041,197 @@ function isValidWebUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+function validateDictionaryPayload(
+  payload: unknown
+): { valid: true; data: DictionaryInput } | { valid: false; error: string } {
+  if (typeof payload !== "object" || payload === null) {
+    return { valid: false, error: "Payload must be an object" };
+  }
+  const obj = payload as Record<string, unknown>;
+  const name = typeof obj.name === "string" ? obj.name.trim() : "";
+  if (!name) {
+    return { valid: false, error: "Name is required" };
+  }
+  return { valid: true, data: { name } };
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  return "code" in error && (error as { code?: string }).code === "23505";
+}
+
+async function dictionaryValueExists(
+  table: "categories" | "ingredients_catalog" | "meal_categories" | "subcategories",
+  name: string
+): Promise<boolean> {
+  const result = await pool.query(`SELECT 1 FROM ${table} WHERE lower(name) = lower($1) LIMIT 1`, [name.trim()]);
+  return (result.rowCount ?? 0) > 0;
+}
+
+async function findMissingIngredients(names: string[]): Promise<string[]> {
+  const normalizedNames = Array.from(
+    new Set(
+      names
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .map((item) => item.toLocaleLowerCase("ru-RU"))
+    )
+  );
+  if (normalizedNames.length === 0) {
+    return [];
+  }
+
+  const { rows } = await pool.query(
+    `
+    SELECT lower(name) AS normalized
+    FROM ingredients_catalog
+    WHERE lower(name) = ANY($1::text[])
+    `,
+    [normalizedNames]
+  );
+  const existing = new Set(rows.map((row: { normalized: string }) => row.normalized));
+  return normalizedNames.filter((name) => !existing.has(name));
+}
+
+function getAdminPageHtml(): string {
+  return `<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cooking Receipts Admin</title>
+  <style>
+    body { font-family: Segoe UI, Arial, sans-serif; background: #f6f8fb; margin: 0; color: #1e293b; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px; }
+    h1 { margin: 0 0 16px; }
+    .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; }
+    form { display: flex; gap: 8px; margin-bottom: 10px; }
+    input { flex: 1; padding: 8px 10px; border-radius: 8px; border: 1px solid #cbd5e1; }
+    button { border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; padding: 8px 10px; cursor: pointer; }
+    button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+    ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 380px; overflow: auto; }
+    li { display: flex; justify-content: space-between; gap: 8px; align-items: center; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px; }
+    .muted { color: #64748b; font-size: 14px; }
+    .msg { margin: 0 0 10px; color: #334155; font-size: 14px; min-height: 18px; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>Админка справочников</h1>
+    <p class="muted">Управление справочниками: категории, подкатегории, основные ингредиенты и ингредиенты.</p>
+    <p id="message" class="msg"></p>
+    <div class="grid">
+      <section class="card" id="mealCategoryCard"></section>
+      <section class="card" id="subcategoryCard"></section>
+      <section class="card" id="mainIngredientCard"></section>
+      <section class="card" id="ingredientCard"></section>
+    </div>
+  </main>
+  <script>
+    const messageNode = document.getElementById("message");
+    const sections = [
+      { key: "mealCategory", title: "Категории (прием пищи)", placeholder: "Например: Завтрак", endpoint: "/catalog/meal-categories", cardId: "mealCategoryCard" },
+      { key: "subcategory", title: "Подкатегории (тип блюда)", placeholder: "Например: Котлеты", endpoint: "/catalog/subcategories", cardId: "subcategoryCard" },
+      { key: "mainIngredient", title: "Основные ингредиенты", placeholder: "Например: Говядина", endpoint: "/catalog/main-ingredients", cardId: "mainIngredientCard" },
+      { key: "ingredient", title: "Ингредиенты", placeholder: "Например: Лук", endpoint: "/catalog/ingredients", cardId: "ingredientCard" }
+    ];
+
+    function setMessage(text) { messageNode.textContent = text || ""; }
+
+    async function request(path, init) {
+      const response = await fetch(path, init);
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({ error: "Request failed" }));
+        throw new Error(payload.error || "Ошибка запроса");
+      }
+      return response.json().catch(() => ({}));
+    }
+
+    function createSectionDom(section) {
+      const card = document.getElementById(section.cardId);
+      card.innerHTML = "";
+      const title = document.createElement("h2");
+      title.textContent = section.title;
+      const form = document.createElement("form");
+      form.id = section.key + "Form";
+      const input = document.createElement("input");
+      input.id = section.key + "Input";
+      input.placeholder = section.placeholder;
+      const button = document.createElement("button");
+      button.type = "submit";
+      button.className = "primary";
+      button.textContent = "Добавить";
+      form.append(input, button);
+      const list = document.createElement("ul");
+      list.id = section.key + "List";
+      card.append(title, form, list);
+      return { form, input, list };
+    }
+
+    function renderList(container, items, endpoint) {
+      container.innerHTML = "";
+      if (!items.length) {
+        const li = document.createElement("li");
+        li.textContent = "Список пуст";
+        container.appendChild(li);
+        return;
+      }
+      for (const item of items) {
+        const li = document.createElement("li");
+        const label = document.createElement("span");
+        label.textContent = item.name;
+        const removeBtn = document.createElement("button");
+        removeBtn.textContent = "Удалить";
+        removeBtn.addEventListener("click", async () => {
+          try {
+            await request(\`\${endpoint}/\${item.id}\`, { method: "DELETE" });
+            setMessage("Удалено");
+            await load();
+          } catch (error) {
+            setMessage(error.message);
+          }
+        });
+        li.append(label, removeBtn);
+        container.appendChild(li);
+      }
+    }
+
+    const sectionNodes = sections.map((section) => ({ section, ...createSectionDom(section) }));
+
+    sectionNodes.forEach(({ section, form, input }) => {
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const name = input.value.trim();
+        if (!name) { return; }
+        try {
+          await request(section.endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name })
+          });
+          input.value = "";
+          setMessage("Запись добавлена");
+          await load();
+        } catch (error) {
+          setMessage(error.message);
+        }
+      });
+    });
+
+    async function load() {
+      const all = await Promise.all(sectionNodes.map(({ section }) => request(section.endpoint)));
+      sectionNodes.forEach(({ section, list }, index) => {
+        renderList(list, all[index], section.endpoint);
+      });
+    }
+
+    load().catch((error) => setMessage(error.message));
+  </script>
+</body>
+</html>`;
 }

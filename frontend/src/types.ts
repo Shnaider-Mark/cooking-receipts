@@ -1,6 +1,9 @@
 export type RecipeListItem = {
   id: number;
   title: string;
+  mealCategory: string;
+  subcategory: string;
+  mainIngredient: string;
   category: string;
   description: string;
   sourceUrl: string | null;
@@ -23,6 +26,9 @@ export type Ingredient = {
 export type RecipeDetail = {
   id: number;
   title: string;
+  mealCategory: string;
+  subcategory: string;
+  mainIngredient: string;
   category: string;
   description: string;
   sourceUrl: string | null;
@@ -39,7 +45,9 @@ export type RecipeDetail = {
 
 export type RecipePayload = {
   title: string;
-  category: string;
+  mealCategory: string;
+  subcategory: string;
+  mainIngredient: string;
   description: string;
   sourceUrl: string | null;
   servings: number;
@@ -78,4 +86,9 @@ export type ShoppingListResponse = {
   weekEnd: string;
   items: ShoppingListItem[];
   text: string;
+};
+
+export type CatalogItem = {
+  id: number;
+  name: string;
 };

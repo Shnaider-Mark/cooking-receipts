@@ -4,15 +4,19 @@ import {
   createRecipe,
   deleteMealPlan,
   deleteRecipe,
+  fetchIngredientsCatalog,
+  fetchMainIngredients,
+  fetchMealCategories,
   fetchMealPlans,
   fetchRecipe,
   fetchRecipes,
+  fetchSubcategories,
   fetchShoppingList,
   getImageUrl,
   updateRecipe,
   uploadPhoto
 } from "./api";
-import type { MealPlanItem, RecipeDetail, RecipeListItem, RecipePayload } from "./types";
+import type { CatalogItem, MealPlanItem, RecipeDetail, RecipeListItem, RecipePayload } from "./types";
 
 type ViewState =
   | { mode: "list" }
@@ -24,7 +28,9 @@ type AppTab = "recipes" | "planner";
 
 const EMPTY_RECIPE: RecipePayload = {
   title: "",
-  category: "",
+  mealCategory: "Ужин",
+  subcategory: "Другое",
+  mainIngredient: "",
   description: "",
   sourceUrl: null,
   servings: 1,
@@ -43,23 +49,25 @@ export default function App() {
   const [selectedRecipe, setSelectedRecipe] = useState<RecipeDetail | null>(null);
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState("");
-  const [activeCategory, setActiveCategory] = useState("");
+  const [activeMealCategory, setActiveMealCategory] = useState("");
+  const [activeSubcategory, setActiveSubcategory] = useState("");
+  const [activeMainIngredient, setActiveMainIngredient] = useState("");
+  const [activeIngredient, setActiveIngredient] = useState("");
+  const [mealCategoriesCatalog, setMealCategoriesCatalog] = useState<CatalogItem[]>([]);
+  const [subcategoriesCatalog, setSubcategoriesCatalog] = useState<CatalogItem[]>([]);
+  const [mainIngredientsCatalog, setMainIngredientsCatalog] = useState<CatalogItem[]>([]);
+  const [ingredientsCatalog, setIngredientsCatalog] = useState<CatalogItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const suggestedCategories = ["Десерты", "Рыба", "Говядина", "Курица", "Супы", "Салаты", "Завтраки"];
 
   const tags = useMemo(
     () => Array.from(new Set(recipes.flatMap((recipe) => recipe.tags))).sort((a, b) => a.localeCompare(b)),
     [recipes]
   );
-  const categories = useMemo(
-    () =>
-      Array.from(new Set([...suggestedCategories, ...recipes.map((recipe) => recipe.category)]))
-        .map((item) => item.trim())
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b)),
-    [recipes]
-  );
+  const mealCategories = useMemo(() => mealCategoriesCatalog.map((item) => item.name), [mealCategoriesCatalog]);
+  const subcategories = useMemo(() => subcategoriesCatalog.map((item) => item.name), [subcategoriesCatalog]);
+  const mainIngredients = useMemo(() => mainIngredientsCatalog.map((item) => item.name), [mainIngredientsCatalog]);
+  const ingredientOptions = useMemo(() => ingredientsCatalog.map((item) => item.name), [ingredientsCatalog]);
   const ingredientGroups = useMemo(() => {
     if (!selectedRecipe) {
       return [] as Array<[string, RecipeDetail["ingredients"]]>;
@@ -75,12 +83,22 @@ export default function App() {
       }, {})
     );
   }, [selectedRecipe]);
-  const hasActiveFilters = search.trim().length > 0 || Boolean(activeTag) || Boolean(activeCategory);
+  const hasActiveFilters =
+    search.trim().length > 0 ||
+    Boolean(activeTag) ||
+    Boolean(activeMealCategory) ||
+    Boolean(activeSubcategory) ||
+    Boolean(activeMainIngredient) ||
+    Boolean(activeIngredient);
   const listSkeletonItems = useMemo(() => Array.from({ length: 6 }, (_, index) => `skeleton-${index}`), []);
 
   useEffect(() => {
     void loadRecipes();
-  }, [search, activeTag, activeCategory]);
+  }, [search, activeTag, activeMealCategory, activeSubcategory, activeMainIngredient, activeIngredient]);
+
+  useEffect(() => {
+    void loadDictionaries();
+  }, []);
 
   useEffect(() => {
     if (view.mode !== "detail") {
@@ -94,12 +112,36 @@ export default function App() {
     try {
       setLoading(true);
       setError(null);
-      const data = await fetchRecipes({ q: search, tag: activeTag, category: activeCategory });
+      const data = await fetchRecipes({
+        q: search,
+        tag: activeTag,
+        mealCategory: activeMealCategory,
+        subcategory: activeSubcategory,
+        mainIngredient: activeMainIngredient,
+        ingredient: activeIngredient
+      });
       setRecipes(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось загрузить рецепты");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadDictionaries() {
+    try {
+      const [mealCategoriesData, subcategoriesData, mainIngredientsData, ingredientsData] = await Promise.all([
+        fetchMealCategories(),
+        fetchSubcategories(),
+        fetchMainIngredients(),
+        fetchIngredientsCatalog()
+      ]);
+      setMealCategoriesCatalog(mealCategoriesData);
+      setSubcategoriesCatalog(subcategoriesData);
+      setMainIngredientsCatalog(mainIngredientsData);
+      setIngredientsCatalog(ingredientsData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось загрузить справочники");
     }
   }
 
@@ -168,6 +210,9 @@ export default function App() {
         >
           План недели
         </button>
+        <a className="tab-link" href="http://localhost:4000/admin" target="_blank" rel="noreferrer">
+          Админка справочников
+        </a>
       </div>
 
       {error && <div className="alert error">{error}</div>}
@@ -192,14 +237,41 @@ export default function App() {
                       </option>
                     ))}
                   </select>
-                  <select value={activeCategory} onChange={(event) => setActiveCategory(event.target.value)}>
+                  <select value={activeMealCategory} onChange={(event) => setActiveMealCategory(event.target.value)}>
                     <option value="">Все категории</option>
-                    {categories.map((category) => (
+                    {mealCategories.map((category) => (
                       <option key={category} value={category}>
                         {category}
                       </option>
                     ))}
                   </select>
+                  <select value={activeSubcategory} onChange={(event) => setActiveSubcategory(event.target.value)}>
+                    <option value="">Все подкатегории</option>
+                    {subcategories.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                  <select value={activeMainIngredient} onChange={(event) => setActiveMainIngredient(event.target.value)}>
+                    <option value="">Все основные ингредиенты</option>
+                    {mainIngredients.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    list="ingredients-search-list"
+                    placeholder="Фильтр по ингредиенту"
+                    value={activeIngredient}
+                    onChange={(event) => setActiveIngredient(event.target.value)}
+                  />
+                  <datalist id="ingredients-search-list">
+                    {ingredientOptions.map((ingredient) => (
+                      <option key={ingredient} value={ingredient} />
+                    ))}
+                  </datalist>
                 </div>
                 {hasActiveFilters && (
                   <button
@@ -208,7 +280,10 @@ export default function App() {
                     onClick={() => {
                       setSearch("");
                       setActiveTag("");
-                      setActiveCategory("");
+                      setActiveMealCategory("");
+                      setActiveSubcategory("");
+                      setActiveMainIngredient("");
+                      setActiveIngredient("");
                     }}
                   >
                     Сбросить фильтры
@@ -237,8 +312,11 @@ export default function App() {
                   <article key={recipe.id} className="card recipe-card">
                     <div className="recipe-card-head">
                       <h3 title={recipe.title}>{recipe.title}</h3>
-                      <span className="category-badge">{recipe.category}</span>
+                      <span className="category-badge">{recipe.mealCategory}</span>
                     </div>
+                    <p className="list-meta">
+                      {recipe.subcategory} • Основа: {recipe.mainIngredient}
+                    </p>
                     <p className="recipe-description">{recipe.description || "Без описания"}</p>
                     {recipe.tags.length > 0 && (
                       <div className="chips">
@@ -278,8 +356,11 @@ export default function App() {
           </div>
           <div className="detail-title-block">
             <h2>{selectedRecipe.title}</h2>
-            <span className="category-badge">{selectedRecipe.category}</span>
+            <span className="category-badge">{selectedRecipe.mealCategory}</span>
           </div>
+          <p className="detail-description">
+            {selectedRecipe.subcategory} • Основной ингредиент: {selectedRecipe.mainIngredient}
+          </p>
           {selectedRecipe.sourceUrl && (
             <p className="detail-description">
               Источник:{" "}
@@ -372,6 +453,10 @@ export default function App() {
           {(view.mode === "create" || view.mode === "edit") && (
             <RecipeForm
               recipeId={view.mode === "edit" ? view.id : null}
+              mealCategories={mealCategories}
+              subcategories={subcategories}
+              mainIngredients={mainIngredients}
+              ingredientOptions={ingredientOptions}
               onCancel={() => setView({ mode: "list" })}
               onSaved={async (id) => {
                 await loadRecipes();
@@ -386,8 +471,16 @@ export default function App() {
   );
 }
 
-function RecipeForm(props: { recipeId: number | null; onCancel: () => void; onSaved: (id: number) => Promise<void> }) {
-  const { recipeId, onCancel, onSaved } = props;
+function RecipeForm(props: {
+  recipeId: number | null;
+  mealCategories: string[];
+  subcategories: string[];
+  mainIngredients: string[];
+  ingredientOptions: string[];
+  onCancel: () => void;
+  onSaved: (id: number) => Promise<void>;
+}) {
+  const { recipeId, mealCategories, subcategories, mainIngredients, ingredientOptions, onCancel, onSaved } = props;
   const [form, setForm] = useState<RecipePayload>(EMPTY_RECIPE);
   const [tagsInput, setTagsInput] = useState("");
   const [newSectionName, setNewSectionName] = useState("");
@@ -406,7 +499,9 @@ function RecipeForm(props: { recipeId: number | null; onCancel: () => void; onSa
       const recipe = await fetchRecipe(recipeId);
       setForm({
         title: recipe.title,
-        category: recipe.category,
+        mealCategory: recipe.mealCategory,
+        subcategory: recipe.subcategory,
+        mainIngredient: recipe.mainIngredient,
         description: recipe.description ?? "",
         sourceUrl: recipe.sourceUrl ?? null,
         servings: recipe.servings,
@@ -451,6 +546,10 @@ function RecipeForm(props: { recipeId: number | null; onCancel: () => void; onSa
         .map((tag) => tag.trim())
         .filter(Boolean),
     [tagsInput]
+  );
+  const allowedIngredients = useMemo(
+    () => new Set(ingredientOptions.map((item) => item.trim().toLocaleLowerCase("ru-RU")).filter(Boolean)),
+    [ingredientOptions]
   );
 
   function updateIngredient(index: number, field: "name" | "amount" | "unit", value: string) {
@@ -544,11 +643,22 @@ function RecipeForm(props: { recipeId: number | null; onCancel: () => void; onSa
     event.preventDefault();
     setSubmitting(true);
     setMessage(null);
+    const normalizedIngredientNames = form.ingredients
+      .map((item) => item.name.trim().toLocaleLowerCase("ru-RU"))
+      .filter(Boolean);
+    const missingIngredients = Array.from(new Set(normalizedIngredientNames)).filter((item) => !allowedIngredients.has(item));
+    if (missingIngredients.length > 0) {
+      setMessage(`Выберите ингредиенты из справочника: ${missingIngredients.join(", ")}`);
+      setSubmitting(false);
+      return;
+    }
     const payload: RecipePayload = {
       ...form,
       title: form.title.trim(),
       description: form.description.trim(),
-      category: form.category.trim(),
+      mealCategory: form.mealCategory.trim(),
+      subcategory: form.subcategory.trim(),
+      mainIngredient: form.mainIngredient.trim(),
       sourceUrl: form.sourceUrl ? form.sourceUrl.trim() : null,
       ingredients: form.ingredients.map((item) => ({
         ...item,
@@ -598,17 +708,42 @@ function RecipeForm(props: { recipeId: number | null; onCancel: () => void; onSa
 
         <label>
           Категория
-          <input
-            value={form.category}
-            onChange={(event) => setForm({ ...form, category: event.target.value })}
-            list="category-suggestions"
+          <select
+            value={form.mealCategory}
+            onChange={(event) => setForm({ ...form, mealCategory: event.target.value })}
             required
-          />
-          <datalist id="category-suggestions">
-            {["Десерты", "Рыба", "Говядина", "Курица", "Супы", "Салаты", "Завтраки"].map((category) => (
-              <option key={category} value={category} />
+          >
+            <option value="">Выберите категорию</option>
+            {mealCategories.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
             ))}
-          </datalist>
+          </select>
+        </label>
+
+        <label>
+          Подкатегория
+          <select value={form.subcategory} onChange={(event) => setForm({ ...form, subcategory: event.target.value })} required>
+            <option value="">Выберите подкатегорию</option>
+            {subcategories.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Основной ингредиент
+          <select value={form.mainIngredient} onChange={(event) => setForm({ ...form, mainIngredient: event.target.value })} required>
+            <option value="">Выберите основной ингредиент</option>
+            {mainIngredients.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
         </label>
 
         <label>
@@ -699,6 +834,7 @@ function RecipeForm(props: { recipeId: number | null; onCancel: () => void; onSa
             {sectionItems.map(({ item, index }) => (
               <div key={`ingredient-${index}`} className="row ingredient-row">
                 <input
+                  list="ingredient-name-options"
                   placeholder="Название"
                   value={item.name}
                   onChange={(event) => updateIngredient(index, "name", event.target.value)}
@@ -740,6 +876,11 @@ function RecipeForm(props: { recipeId: number | null; onCancel: () => void; onSa
       <datalist id="ingredient-section-suggestions">
         {sectionSuggestions.map((section) => (
           <option key={section} value={section} />
+        ))}
+      </datalist>
+      <datalist id="ingredient-name-options">
+        {ingredientOptions.map((ingredient) => (
+          <option key={ingredient} value={ingredient} />
         ))}
       </datalist>
 

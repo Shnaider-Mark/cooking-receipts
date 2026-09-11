@@ -1,4 +1,5 @@
 import type {
+  CatalogItem,
   MealPlanItem,
   MealPlanPayload,
   RecipeDetail,
@@ -28,7 +29,14 @@ export function getImageUrl(url: string | null): string | null {
   return `${API_BASE}${url}`;
 }
 
-export async function fetchRecipes(params: { q?: string; tag?: string; category?: string }) {
+export async function fetchRecipes(params: {
+  q?: string;
+  tag?: string;
+  mealCategory?: string;
+  subcategory?: string;
+  mainIngredient?: string;
+  ingredient?: string;
+}) {
   const query = new URLSearchParams();
   if (params.q) {
     query.set("q", params.q);
@@ -36,8 +44,17 @@ export async function fetchRecipes(params: { q?: string; tag?: string; category?
   if (params.tag) {
     query.set("tag", params.tag);
   }
-  if (params.category) {
-    query.set("category", params.category);
+  if (params.mealCategory) {
+    query.set("mealCategory", params.mealCategory);
+  }
+  if (params.subcategory) {
+    query.set("subcategory", params.subcategory);
+  }
+  if (params.mainIngredient) {
+    query.set("mainIngredient", params.mainIngredient);
+  }
+  if (params.ingredient) {
+    query.set("ingredient", params.ingredient);
   }
   return request<RecipeListItem[]>(`/recipes?${query.toString()}`);
 }
@@ -104,4 +121,20 @@ export async function deleteMealPlan(id: number) {
 
 export async function fetchShoppingList(weekStart: string) {
   return request<ShoppingListResponse>(`/shopping-list?weekStart=${encodeURIComponent(weekStart)}`);
+}
+
+export async function fetchMealCategories() {
+  return request<CatalogItem[]>("/catalog/meal-categories");
+}
+
+export async function fetchSubcategories() {
+  return request<CatalogItem[]>("/catalog/subcategories");
+}
+
+export async function fetchMainIngredients() {
+  return request<CatalogItem[]>("/catalog/main-ingredients");
+}
+
+export async function fetchIngredientsCatalog() {
+  return request<CatalogItem[]>("/catalog/ingredients");
 }
